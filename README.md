@@ -17,7 +17,10 @@ active_scaffold :ticket do |config|
       },
       filters: %i[open overdue]
     },
-    show: %i[id subject status description],
+    show: {
+      columns: %i[subject status description],
+      lookup_columns: %i[case_number]
+    },
     update: {columns: %i[status description]}
   }
 end
@@ -35,6 +38,7 @@ active_scaffold :ticket do |config|
                     filter_columns: {status: %i[equal in]},
                     filters: %i[open overdue]
   config.mcp.show.columns = %i[id subject status description]
+  config.mcp.show.lookup_columns = %i[case_number]
 end
 ```
 
@@ -293,7 +297,8 @@ end
 
 The factory uses `generate_tools_for`.
 
-The built-in `ListToolGenerator` is registered explicitly for `:list`. It
+The built-in `ListToolGenerator` is registered explicitly for `:list`, and
+`ShowToolGenerator` is registered for `:show`. The list generator
 generates a read-only subclass of `ActiveScaffold::MCP::ListTool`. The base list
 tool reuses ActiveScaffold's `do_list` and owns execution, pagination,
 authorization, and result serialization. The generator builds the concrete
@@ -312,7 +317,10 @@ column is exposed with the same operators. For example, selecting `company_id`
 also exposes `company_type` (or `company_id_in` and `company_type_in` when using
 the `in` operator).
 
-Output columns selected from the normal list configuration already pass through
+The model primary key is always included in list and show output, even when it
+is omitted from the configured MCP output columns, subject to the same column
+and record authorization as every other value. Output columns selected from the
+normal list configuration already pass through
 ActiveScaffold's class-level visibility checks. Explicit MCP output columns are
 checked with the model's `authorized_for?`, and every output value is also
 checked with the individual record's `authorized_for?` before serialization.
@@ -330,6 +338,31 @@ another count query:
   "page": 2,
   "total_count": 57,
   "total_pages": 3
+}
+```
+
+The show generator creates a read-only `show_<resource>` tool. By default it
+requires `id`, whose JSON type follows the model primary key. Configure
+`lookup_columns` to expose alternative identifiers such as `case_number`:
+
+```ruby
+config.mcp.show.lookup_columns = %i[case_number]
+```
+
+Callers must provide exactly one of `id` or the configured lookup columns. A
+lookup must resolve to exactly one record; a missing or ambiguous value returns
+an error. Lookup columns are explicit because application-level uniqueness is
+often more meaningful than database-index introspection. The tool reuses
+ActiveScaffold's filtered query, `do_show`, show authorization, configured show
+columns, and the same record and association serialization as list. Its result
+contains one record:
+
+```json
+{
+  "record": {
+    "id": 7,
+    "name": "Widget 7"
+  }
 }
 ```
 

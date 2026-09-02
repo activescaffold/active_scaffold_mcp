@@ -244,10 +244,12 @@ class ActiveScaffoldMCPTest < Minitest::Test
     config.list.columns = %i[id name]
     config.list.filters = :all
     config.show.columns = %i[id name description]
+    config.show.lookup_columns = %i[case_number]
 
     assert_equal %i[id name], config.actions.dig(:list, :columns)
     assert_equal :all, config.actions.dig(:list, :filters)
     assert_equal %i[id name description], config.show.columns
+    assert_equal %i[case_number], config.show.lookup_columns
   end
 
   def test_custom_action_settings_are_validated_when_validator_defines_a_method
@@ -453,6 +455,12 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_same mcp_config, generated_arguments.first[:mcp_config]
   end
 
+  def test_generator_factory_registers_builtin_show_generator
+    generators = ActiveScaffold::MCP::GeneratorFactory.new.instance_variable_get(:@action_generators)
+
+    assert_same ActiveScaffold::MCP::ShowToolGenerator, generators[:show]
+  end
+
   def test_generator_factory_skips_exposed_actions_disabled_in_the_scaffold
     generator = Object.new
     generator.define_singleton_method(:generate_tool_for) { |**| flunk "list generator must not be called" }
@@ -594,6 +602,101 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_includes error.message, "conflicts with an MCP column filter"
   end
 
+  def test_show_tool_generator_builds_required_primary_key_schema_and_params
+    tool_class = build_show_tool_class(columns: %i[id name])
+
+    assert_operator tool_class, :<, ActiveScaffold::MCP::ShowTool
+    assert_includes tool_class.ancestors, ActiveScaffold::Actions::Show
+    assert_equal "show_widgets", tool_class.tool_name
+    assert_equal "Show Widgets", tool_class.title
+    assert_equal %w[id], tool_class._schema_properties.keys
+    assert_equal ["id"], tool_class._required_properties
+    assert_equal "integer", tool_class._schema_properties.dig("id", :type)
+    assert_equal 7, tool_class.new(id: 7).params[:id]
+  end
+
+  def test_show_tool_uses_shared_record_serialization
+    column = Struct.new(:name, :association).new(:name, nil)
+    record = Struct.new(:name) do
+      def authorized_for?(_options)
+        true
+      end
+    end.new("Widget 7")
+    rendered = nil
+    tool = build_show_tool_class.new(id: 7)
+    tool.define_singleton_method(:do_show) { @record = record }
+    tool.define_singleton_method(:mcp_output_columns) { [column] }
+    tool.define_singleton_method(:render) { |text:| rendered = JSON.parse(text) }
+
+    tool.perform
+
+    assert_equal({"record" => {"name" => "Widget 7"}}, rendered)
+  end
+
+  def test_show_tool_generator_supports_exactly_one_lookup_column
+    tool_class = build_show_tool_class(columns: %i[name], lookup_columns: %i[case_number])
+
+    assert_equal %w[id case_number], tool_class._schema_properties.keys
+    assert_empty tool_class._required_properties
+    assert_includes tool_class.description, "id or case_number"
+    refute tool_class.new.valid?
+    refute tool_class.new(id: 7, case_number: "S0000007").valid?
+    assert tool_class.new(case_number: "S0000007").valid?
+    assert_equal "S0000007", tool_class.new(case_number: "S0000007").params[:case_number]
+  end
+
+  def test_show_lookup_columns_use_shared_json_schema_types_and_formats
+    tool_class = build_show_tool_class(lookup_columns: %i[active reported_at])
+
+    assert_equal "boolean", tool_class._schema_properties.dig("active", :type)
+    assert_equal "string", tool_class._schema_properties.dig("reported_at", :type)
+    assert_equal "date-time", tool_class._schema_properties.dig("reported_at", :format)
+  end
+
+  def test_show_tool_resolves_lookup_column_to_primary_key
+    where_arguments = []
+    relation = Object.new
+    relation.define_singleton_method(:where) { |arguments| where_arguments << arguments; relation }
+    relation.define_singleton_method(:limit) { |value| raise "unexpected limit" unless value == 2; relation }
+    relation.define_singleton_method(:pluck) { |column| raise "unexpected primary key" unless column == :id; [7] }
+    resolved_id = nil
+    rendered = nil
+    tool = build_show_tool_class(lookup_columns: %i[case_number]).new(case_number: "S0000007")
+    tool.define_singleton_method(:filtered_query) { relation }
+    tool.define_singleton_method(:do_show) do
+      resolved_id = params[:id]
+      @record = Object.new
+    end
+    tool.define_singleton_method(:mcp_output_columns) { [] }
+    tool.define_singleton_method(:render) { |text:| rendered = JSON.parse(text) }
+
+    tool.perform
+
+    assert_equal [{case_number: "S0000007"}], where_arguments
+    assert_equal 7, resolved_id
+    assert_equal({"record" => {}}, rendered)
+  end
+
+  def test_show_tool_rejects_an_ambiguous_lookup
+    relation = Object.new
+    relation.define_singleton_method(:where) { |_arguments| relation }
+    relation.define_singleton_method(:limit) { |_value| relation }
+    relation.define_singleton_method(:pluck) { |_column| [7, 8] }
+    tool = build_show_tool_class(lookup_columns: %i[case_number]).new(case_number: "duplicate")
+    tool.define_singleton_method(:filtered_query) { relation }
+
+    assert_raises(ActiveScaffold::MCP::ShowTool::AmbiguousLookup) do
+      tool.send(:resolve_lookup_id)
+    end
+  end
+
+  def test_show_tool_applies_show_authorization
+    tool = build_show_tool_class.new(id: 7)
+    tool.define_singleton_method(:show_authorized?) { false }
+
+    refute tool.send(:tool_authorized?)
+  end
+
   def test_list_tool_generator_includes_shared_action_modules_after_list
     extension = Module.new do
       def list_authorized?
@@ -679,6 +782,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     tool_class = build_list_tool_class(columns: %i[id secret])
     model = Object.new
     model.define_singleton_method(:authorized_for?) { |options| options[:column] == :id }
+    model.define_singleton_method(:primary_key) { :id }
     column_class = Struct.new(:name, :association)
     id_column = column_class.new(:id, nil)
     secret_column = column_class.new(:secret, nil)
@@ -698,6 +802,21 @@ class ActiveScaffoldMCPTest < Minitest::Test
       end
     end.new(1, "private")
     assert_equal({id: 1}, tool.send(:mcp_record_hash, record, [id_column, secret_column]))
+  end
+
+  def test_output_columns_always_include_the_primary_key
+    tool_class = build_list_tool_class(columns: %i[name])
+    model = Object.new
+    model.define_singleton_method(:authorized_for?) { |_options| true }
+    model.define_singleton_method(:primary_key) { :id }
+    column_class = Struct.new(:name, :association)
+    id_column = column_class.new(:id, nil)
+    name_column = column_class.new(:name, nil)
+    config = Struct.new(:model, :columns).new(model, {id: id_column, name: name_column})
+    tool = tool_class.new
+    tool.define_singleton_method(:active_scaffold_config) { config }
+
+    assert_equal [id_column, name_column], tool.send(:mcp_output_columns)
   end
 
   def test_list_tool_serializes_singular_and_collection_associations_as_id_and_label
@@ -781,6 +900,43 @@ class ActiveScaffoldMCPTest < Minitest::Test
     ActiveScaffold::MCP::ListToolGenerator.generate_tool_for(
       controller_class: Class.new,
       action_name: :list,
+      action_config: action_config,
+      mcp_config: mcp_config,
+      settings: settings
+    )
+  end
+
+  def build_show_tool_class(settings = {})
+    settings = settings.dup
+    id_column = Struct.new(:name, :type).new("id", :integer)
+    case_number_column = Struct.new(:name, :type).new("case_number", :string)
+    name_column = Struct.new(:name, :type).new("name", :string)
+    active_column = Struct.new(:name, :type).new("active", :boolean)
+    reported_at_column = Struct.new(:name, :type).new("reported_at", :datetime)
+    model_name = Struct.new(:route_key) do
+      def human(count:)
+        count == 2 ? "Widgets" : "Widget"
+      end
+    end.new("widgets")
+    model = Struct.new(:model_name, :primary_key).new(model_name, "id")
+    model.define_singleton_method(:authorized_for?) { |_options| true }
+    core = Struct.new(:model, :_columns_hash, :actions).new(
+      model,
+      {
+        "id" => id_column,
+        "case_number" => case_number_column,
+        "name" => name_column,
+        "active" => active_column,
+        "reported_at" => reported_at_column
+      },
+      [:show]
+    )
+    mcp_config = list_mcp_config(core)
+    action_config = Struct.new(:columns).new([])
+
+    ActiveScaffold::MCP::ShowToolGenerator.generate_tool_for(
+      controller_class: Class.new,
+      action_name: :show,
       action_config: action_config,
       mcp_config: mcp_config,
       settings: settings

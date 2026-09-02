@@ -21,6 +21,7 @@ module ActiveScaffold
         @custom_action_rules = []
         @registration_position = 0
         register ActiveScaffold::MCP::ListToolGenerator, actions: :list
+        register ActiveScaffold::MCP::ShowToolGenerator, actions: :show
       end
 
       def register(generator, actions:)

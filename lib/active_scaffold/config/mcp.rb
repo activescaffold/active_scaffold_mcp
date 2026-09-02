@@ -118,7 +118,7 @@ module ActiveScaffold
             result[name] = case name
                            when :description, :label, :name
                              value.to_s
-                           when :columns
+                           when :columns, :lookup_columns
                              normalize_names(value)
                            when :filter_columns
                              value.is_a?(Hash) ? normalize_operator_map(value) : normalize_names(value)

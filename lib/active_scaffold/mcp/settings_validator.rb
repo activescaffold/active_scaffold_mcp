@@ -8,6 +8,7 @@ module ActiveScaffold
       COLUMN_SETTING = %i[columns].freeze
       COMMON_SETTINGS = %i[description label modules name].freeze
       LIST_SETTINGS = %i[columns filter_columns filter_column_sets filters].freeze
+      SHOW_SETTINGS = %i[columns lookup_columns].freeze
 
       def validate!(action_name, settings)
         settings.each do |setting, value|
@@ -45,7 +46,7 @@ module ActiveScaffold
       end
 
       def valid_settings_for_show?(setting, _value)
-        COLUMN_SETTING.include?(setting)
+        SHOW_SETTINGS.include?(setting)
       end
 
       def valid_settings_for_create?(setting, _value)
