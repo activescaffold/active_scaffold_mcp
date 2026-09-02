@@ -607,8 +607,8 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     assert_operator tool_class, :<, ActiveScaffold::MCP::ShowTool
     assert_includes tool_class.ancestors, ActiveScaffold::Actions::Show
-    assert_equal "show_widgets", tool_class.tool_name
-    assert_equal "Show Widgets", tool_class.title
+    assert_equal "show_widget", tool_class.tool_name
+    assert_equal "Show Widget", tool_class.title
     assert_equal %w[id], tool_class._schema_properties.keys
     assert_equal ["id"], tool_class._required_properties
     assert_equal "integer", tool_class._schema_properties.dig("id", :type)
@@ -638,7 +638,9 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     assert_equal %w[id case_number], tool_class._schema_properties.keys
     assert_empty tool_class._required_properties
-    assert_includes tool_class.description, "id or case_number"
+    assert_includes tool_class.description, "by id or case number"
+    assert_includes tool_class.description, "exactly one of `id` or `case_number`"
+    assert_equal "Case number of the Widget to return", tool_class._schema_properties.dig("case_number", :description)
     refute tool_class.new.valid?
     refute tool_class.new(id: 7, case_number: "S0000007").valid?
     assert tool_class.new(case_number: "S0000007").valid?
@@ -721,7 +723,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     assert_equal "list_tickets", tool_class.tool_name
     assert_equal "List Support tickets", tool_class.title
-    assert_equal "List Support tickets. Use limit and page for pagination.", tool_class.description
+    assert_equal "List Support tickets as a paginated collection. Use limit and page for pagination.", tool_class.description
     assert_equal "List Support tickets", tool_class.to_h.dig(:annotations, "title")
   end
 
@@ -736,7 +738,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     tool_class = build_list_tool_class(filter_columns: {id: :equal})
 
     assert_equal(
-      "List Widgets. Supports column filters. Use limit and page for pagination.",
+      "List Widgets as a paginated collection. Supports column filters. Use limit and page for pagination.",
       tool_class.description
     )
   end

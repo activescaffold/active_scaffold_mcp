@@ -11,12 +11,28 @@ module ActiveScaffold
           tool_class.active_scaffold_controller_class = controller_class
           tool_class.mcp_action_name = action_name
           tool_class.mcp_output_column_names = settings[:columns]&.map(&:to_sym)
-          tool_class.tool_name(settings[:name] || "#{action_name}_#{mcp_config.name}")
-          tool_class.title("#{action_name.to_s.humanize} #{settings[:label] || mcp_config.label}")
+          tool_class.tool_name(settings[:name] || default_tool_name(action_name, mcp_config))
+          tool_class.title("#{action_name.to_s.humanize} #{tool_resource_label(mcp_config, settings)}")
+        end
+
+        def default_tool_name(action_name, mcp_config)
+          "#{action_name}_#{tool_resource_name(mcp_config)}"
+        end
+
+        def tool_resource_name(mcp_config)
+          mcp_config.name
+        end
+
+        def tool_resource_label(mcp_config, settings)
+          settings[:label] || mcp_config.label
         end
 
         def include_extensions(tool_class, settings)
           Array(settings[:modules]).each { |extension| tool_class.include extension }
+        end
+
+        def singular_label(mcp_config)
+          mcp_config.label.to_s.singularize
         end
 
         def schema_options(column)

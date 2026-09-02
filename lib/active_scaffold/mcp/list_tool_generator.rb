@@ -38,7 +38,7 @@ module ActiveScaffold
           filter_types << "column filters" if mappings.any? { |_name, mapping| mapping[:source] != :named_filter }
           filter_types << "named list filters" if mappings.any? { |_name, mapping| mapping[:source] == :named_filter }
 
-          sentences = [title]
+          sentences = ["#{title} as a paginated collection"]
           sentences << "Supports #{filter_types.to_sentence}" if filter_types.any?
           sentences << "Use limit and page for pagination"
           "#{sentences.join('. ')}."

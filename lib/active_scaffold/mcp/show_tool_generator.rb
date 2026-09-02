@@ -22,13 +22,13 @@ module ActiveScaffold
             tool_class.read_only
             tool_class.property :id,
                                 **schema_options(core_config._columns_hash[primary_key.to_s]),
-                                description: "Primary key of the record to return",
+                                description: "Database ID of the #{singular_label(mcp_config)} to return",
                                 required: lookup_columns.empty?
             mappings = {id: {target: :id, operator: :equal}}
             lookup_columns.each do |column_name|
               tool_class.property column_name,
                                   **schema_options(core_config._columns_hash[column_name.to_s]),
-                                  description: "Unique #{column_name} of the record to return"
+                                  description: "#{column_name.to_s.humanize} of the #{singular_label(mcp_config)} to return"
               mappings[column_name] = {target: column_name, operator: :equal}
             end
             tool_class.mcp_param_mappings = mappings.freeze
@@ -46,9 +46,22 @@ module ActiveScaffold
           raise ArgumentError, "unknown show lookup columns: #{unknown_columns.to_sentence}"
         end
 
+        def tool_resource_name(mcp_config)
+          super.singularize
+        end
+
+        def tool_resource_label(mcp_config, settings)
+          super.singularize
+        end
+
         def description(generated_title, lookup_columns)
           identifiers = ["id", *lookup_columns.map(&:to_s)]
-          "#{generated_title} by #{identifiers.to_sentence(two_words_connector: ' or ', last_word_connector: ' or ')}. Provide exactly one identifier."
+          human_identifiers = identifiers.map { |name| name.humanize.downcase }
+          arguments = identifiers.map { |name| "`#{name}`" }
+          resource_label = generated_title.delete_prefix("Show ").singularize
+          "Retrieve one #{resource_label} by #{human_identifiers.to_sentence(two_words_connector: ' or ', last_word_connector: ' or ')}. " \
+            "Use this tool when the user supplies one of these identifiers. " \
+            "Pass exactly one of #{arguments.to_sentence(two_words_connector: ' or ', last_word_connector: ' or ')}."
         end
       end
     end

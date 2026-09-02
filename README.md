@@ -45,7 +45,7 @@ end
 `config.mcp.name` is the stable resource name shared by its generated tools.
 When omitted, it uses `model.model_name.route_key`. Generators prefix it with
 their action, producing names such as `list_support_tickets`; future action
-generators can use the same value for names such as `show_support_tickets`.
+generators can use the same value for names such as `show_support_ticket`.
 
 `config.mcp.label` is the human-facing resource label shared by exposed
 actions. Like ActiveScaffold's list label, it falls back to
@@ -341,7 +341,7 @@ another count query:
 }
 ```
 
-The show generator creates a read-only `show_<resource>` tool. By default it
+The show generator creates a read-only `show_<singular-resource>` tool. By default it
 requires `id`, whose JSON type follows the model primary key. Configure
 `lookup_columns` to expose alternative identifiers such as `case_number`:
 
