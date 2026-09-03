@@ -788,6 +788,18 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal %i[store_search search list], calls
   end
 
+  def test_list_tool_provides_active_scaffold_session_storage_for_search
+    tool = build_list_tool_class(search_action: true).new(search: "router")
+    config = Struct.new(:store_user_settings).new(true)
+    tool.define_singleton_method(:active_scaffold_config) { config }
+    tool.define_singleton_method(:session) { Object.new }
+
+    tool.send(:store_search_params_into_session)
+
+    assert_equal "router", tool.send(:search_params)
+    refute tool.params.key?(:search)
+  end
+
   def test_list_tool_checks_search_authorization_only_for_a_search_call
     tool_class = build_list_tool_class(search_action: true)
     search_tool = tool_class.new(search: "router")

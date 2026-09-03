@@ -68,6 +68,10 @@ module ActiveScaffold
         super || (@mcp_session ||= ActiveSupport::HashWithIndifferentAccess.new)
       end
 
+      def active_scaffold_session_storage(_id = nil)
+        @active_scaffold_session_storage ||= ActiveSupport::HashWithIndifferentAccess.new
+      end
+
       private
 
       def with_active_scaffold_context
