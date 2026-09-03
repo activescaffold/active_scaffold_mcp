@@ -310,6 +310,9 @@ Generated list tools support:
 - The `foreign_keys`, `dates`, and `timestamps` filter-column sets.
 - Selected named list filters or `filters: :all`. Named filters keep their
   ActiveScaffold parameter name (for example, `filter_status`) in the tool schema.
+- A `search` argument whenever ActiveScaffold's search action is enabled. It
+  uses the configured `config.search.columns` and can be combined with the other
+  list filters. Set `config.mcp.list.search = false` to omit it for MCP.
 - Configurable output columns plus bounded `limit` and `page` arguments.
 
 When a selected foreign key belongs to a polymorphic association, its type

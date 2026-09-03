@@ -7,7 +7,7 @@ module ActiveScaffold
 
       COLUMN_SETTING = %i[columns].freeze
       COMMON_SETTINGS = %i[description label modules name].freeze
-      LIST_SETTINGS = %i[columns filter_columns filter_column_sets filters].freeze
+      LIST_SETTINGS = %i[columns filter_columns filter_column_sets filters search].freeze
       SHOW_SETTINGS = %i[columns lookup_columns].freeze
 
       def validate!(action_name, settings)
@@ -41,7 +41,9 @@ module ActiveScaffold
         end
       end
 
-      def valid_settings_for_list?(setting, _value)
+      def valid_settings_for_list?(setting, value)
+        return [true, false].include?(value) if setting == :search
+
         LIST_SETTINGS.include?(setting)
       end
 

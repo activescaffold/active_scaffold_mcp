@@ -21,7 +21,7 @@ module ActiveScaffold
 
       def method_missing(name, *args)
         method_name = name.to_s
-        if method_name.end_with?("=") && args.one?
+        if method_name.end_with?("=") && args.length == 1
           self[method_name.delete_suffix("=")] = args.first
         elsif args.empty?
           self[name]

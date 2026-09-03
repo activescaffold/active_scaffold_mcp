@@ -23,6 +23,7 @@ module ActiveScaffold
 
             add_column_filter_properties(tool_class, core_config, settings, mappings)
             add_named_filter_properties(tool_class, action_config, settings, mappings)
+            add_search_property(tool_class, core_config, settings, mappings)
             add_pagination_properties(tool_class, action_config)
             tool_class.description(settings[:description] || description(tool_class.title, mappings))
             tool_class.mcp_param_mappings = mappings.freeze
@@ -35,11 +36,14 @@ module ActiveScaffold
 
         def description(title, mappings)
           filter_types = []
-          filter_types << "column filters" if mappings.any? { |_name, mapping| mapping[:source] != :named_filter }
+          filter_types << "column filters" if mappings.any? { |_name, mapping| mapping[:source].nil? }
           filter_types << "named list filters" if mappings.any? { |_name, mapping| mapping[:source] == :named_filter }
+          filter_types << "full-text search" if mappings.any? { |_name, mapping| mapping[:source] == :search }
 
           sentences = ["#{title} as a paginated collection"]
           sentences << "Supports #{filter_types.to_sentence}" if filter_types.any?
+          search_mapping = mappings.values.find { |mapping| mapping[:source] == :search }
+          sentences << search_mapping[:description] if search_mapping
           sentences << "Use limit and page for pagination"
           "#{sentences.join('. ')}."
         end
@@ -165,6 +169,33 @@ module ActiveScaffold
           return action_config.filters.to_a if configured_filters == :all
 
           Array(configured_filters).filter_map { |name| action_config.filters[name] }
+        end
+
+        def add_search_property(tool_class, core_config, settings, mappings)
+          return unless search_enabled?(core_config, settings)
+
+          description = search_property_description(core_config)
+          tool_class.include ActiveScaffold::Actions::Search
+          tool_class.property :search,
+                              type: "string",
+                              description: description
+          mappings[:search] = {target: :search, operator: :equal, source: :search, description: description}
+        end
+
+        def search_property_description(core_config)
+          columns = core_config.search.columns.visible_columns(skip_authorization: true, flatten: true)
+          labels = columns.map { |column| column.label.presence || column.name.to_s.humanize }
+          return "Search text across the configured ActiveScaffold search columns" if labels.empty?
+
+          displayed_labels = labels.first(12)
+          remaining_count = labels.length - displayed_labels.length
+          description = "Search text across #{displayed_labels.to_sentence}"
+          description += " and #{remaining_count} more" if remaining_count.positive?
+          description
+        end
+
+        def search_enabled?(core_config, settings)
+          settings.fetch(:search, true) && core_config.actions.include?(:search)
         end
 
         def add_pagination_properties(tool_class, action_config)

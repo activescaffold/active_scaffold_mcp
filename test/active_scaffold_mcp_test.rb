@@ -243,13 +243,16 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     config.list.columns = %i[id name]
     config.list.filters = :all
+    config.list.search = false
     config.show.columns = %i[id name description]
     config.show.lookup_columns = %i[case_number]
 
     assert_equal %i[id name], config.actions.dig(:list, :columns)
     assert_equal :all, config.actions.dig(:list, :filters)
+    assert_equal false, config.list.search
     assert_equal %i[id name description], config.show.columns
     assert_equal %i[case_number], config.show.lookup_columns
+    assert_raises(ActiveScaffold::MCP::SettingsValidator::InvalidSetting) { config.list.search = :auto }
   end
 
   def test_custom_action_settings_are_validated_when_validator_defines_a_method
@@ -517,7 +520,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     model.define_singleton_method(:reflect_on_all_associations) do |macro|
       macro == :belongs_to ? [reflection] : []
     end
-    core = Struct.new(:model, :_columns_hash).new(
+    core = Struct.new(:model, :_columns_hash, :actions).new(
       model,
       {
         "id" => id_column,
@@ -525,7 +528,8 @@ class ActiveScaffoldMCPTest < Minitest::Test
         "company_id" => company_column,
         "company_type" => company_type_column,
         "created_at" => created_column
-      }
+      },
+      [:list]
     )
     mcp_config = list_mcp_config(core)
     action_config = Struct.new(:per_page, :filters).new(20, [])
@@ -743,6 +747,60 @@ class ActiveScaffoldMCPTest < Minitest::Test
     )
   end
 
+  def test_list_tool_generator_adds_search_when_active_scaffold_search_is_enabled
+    tool_class = build_list_tool_class(search_action: true)
+
+    assert_includes tool_class.ancestors, ActiveScaffold::Actions::Search
+    assert_includes tool_class._schema_properties.keys, "search"
+    assert_equal(
+      "Search text across Case number and Summary",
+      tool_class._schema_properties.dig("search", :description)
+    )
+    assert_equal "router", tool_class.new(search: "router").params[:search]
+    assert_includes tool_class.description, "full-text search"
+    assert_includes tool_class.description, "Search text across Case number and Summary"
+  end
+
+  def test_list_tool_search_can_be_disabled_for_mcp
+    tool_class = build_list_tool_class(search_action: true, search: false)
+
+    refute_includes tool_class.ancestors, ActiveScaffold::Actions::Search
+    refute_includes tool_class._schema_properties.keys, "search"
+  end
+
+  def test_list_tool_prepares_search_before_listing_when_search_is_provided
+    pager = Struct.new(:count, :number_of_pages).new(0, 0)
+    page = Struct.new(:number, :pager).new(1, pager)
+    calls = []
+    tool = build_list_tool_class(search_action: true).new(search: "router")
+    tool.define_singleton_method(:store_search_params_into_session) { calls << :store_search }
+    tool.define_singleton_method(:do_search) { calls << :search }
+    tool.define_singleton_method(:do_list) do
+      calls << :list
+      @page = page
+      @records = []
+    end
+    tool.define_singleton_method(:mcp_output_columns) { [] }
+    tool.define_singleton_method(:render) { |text:| JSON.parse(text) }
+
+    tool.perform
+
+    assert_equal %i[store_search search list], calls
+  end
+
+  def test_list_tool_checks_search_authorization_only_for_a_search_call
+    tool_class = build_list_tool_class(search_action: true)
+    search_tool = tool_class.new(search: "router")
+    search_tool.define_singleton_method(:list_authorized?) { true }
+    search_tool.define_singleton_method(:search_authorized?) { false }
+    refute search_tool.send(:tool_authorized?)
+
+    list_tool = tool_class.new
+    list_tool.define_singleton_method(:list_authorized?) { true }
+    list_tool.define_singleton_method(:search_authorized?) { flunk "search authorization must not be checked" }
+    assert list_tool.send(:tool_authorized?)
+  end
+
   def test_list_tool_generator_uses_configured_description
     tool_class = build_list_tool_class(
       label: "Tickets",
@@ -888,14 +946,37 @@ class ActiveScaffoldMCPTest < Minitest::Test
     mcp_name = settings.delete(:mcp_name)
     mcp_label = settings.delete(:mcp_label)
     action_filters = settings.delete(:action_filters) || []
+    search_action = settings.delete(:search_action)
     column = Struct.new(:name, :type).new("id", :integer)
     model_name = Struct.new(:route_key) do
       def human(count:)
         count == 2 ? "Widgets" : "Widget"
       end
     end.new("widgets")
-    model = Struct.new(:model_name).new(model_name)
-    core = Struct.new(:model, :_columns_hash).new(model, {"id" => column})
+    model = Struct.new(:model_name, :primary_key).new(model_name, "id")
+    search_column = Struct.new(:name, :label)
+    configured_search_columns = [
+      search_column.new(:case_number, "Case number"),
+      search_column.new(:summary, nil)
+    ]
+    search_columns = Struct.new(:columns) do
+      delegate :any?, to: :columns
+
+      def visible_columns(**options)
+        raise "search description must not apply authorization" unless options[:skip_authorization]
+        raise "search columns must be flattened" unless options[:flatten]
+
+        columns
+      end
+    end.new(configured_search_columns)
+    search_config = Struct.new(:columns).new(search_columns)
+    actions = search_action ? %i[list search] : [:list]
+    core = Struct.new(:model, :_columns_hash, :actions, :search).new(
+      model,
+      {"id" => column},
+      actions,
+      search_config
+    )
     mcp_config = list_mcp_config(core, name: mcp_name, label: mcp_label)
     action_config = Struct.new(:per_page, :filters).new(20, action_filters)
 

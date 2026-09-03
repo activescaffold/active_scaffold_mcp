@@ -21,6 +21,10 @@ module ActiveScaffold
       end
 
       def perform
+        if mcp_argument_provided?(:search)
+          store_search_params_into_session
+          do_search
+        end
         do_list
         columns = mcp_output_columns
         render(text: JSON.generate(
@@ -41,7 +45,7 @@ module ActiveScaffold
       end
 
       def tool_authorized?
-        super && list_authorized?
+        super && list_authorized? && (!mcp_argument_provided?(:search) || search_authorized?)
       end
 
       def mcp_default_output_columns
