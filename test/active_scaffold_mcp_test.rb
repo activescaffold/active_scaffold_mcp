@@ -531,6 +531,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
       },
       [:list]
     )
+    configure_active_record_core(core)
     mcp_config = list_mcp_config(core)
     action_config = Struct.new(:per_page, :filters).new(20, [])
     settings = {
@@ -751,6 +752,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     tool_class = build_list_tool_class(search_action: true)
 
     assert_includes tool_class.ancestors, ActiveScaffold::Actions::Search
+    assert_equal "%?%", tool_class.like_pattern(:full)
     assert_includes tool_class._schema_properties.keys, "search"
     assert_equal(
       "Search text across Case number and Summary",
@@ -989,6 +991,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
       actions,
       search_config
     )
+    configure_active_record_core(core)
     mcp_config = list_mcp_config(core, name: mcp_name, label: mcp_label)
     action_config = Struct.new(:per_page, :filters).new(20, action_filters)
 
@@ -1026,6 +1029,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
       },
       [:show]
     )
+    configure_active_record_core(core)
     mcp_config = list_mcp_config(core)
     action_config = Struct.new(:columns).new([])
 
@@ -1044,6 +1048,12 @@ class ActiveScaffoldMCPTest < Minitest::Test
       name || core.model.model_name.route_key,
       label || core.model.model_name.human(count: 2)
     )
+  end
+
+  def configure_active_record_core(core)
+    core.define_singleton_method(:active_record?) { true }
+    core.define_singleton_method(:mongoid?) { false }
+    core
   end
 
   def generator_factory_action_config(crud_type, columns)

@@ -8,6 +8,11 @@ module ActiveScaffold
 
         def configure_tool_class(tool_class, controller_class:, action_name:, core_config:, mcp_config:, settings:)
           tool_class.active_scaffold_config = core_config
+          # Finder is included by the base MCP tool before a controller's
+          # ActiveScaffold config is known. Re-extending its class methods now
+          # lets Finder select the configured persistence adapter (and provide
+          # adapter-specific helpers such as like_pattern).
+          tool_class.extend ActiveScaffold::Finder::ClassMethods
           tool_class.active_scaffold_controller_class = controller_class
           tool_class.mcp_action_name = action_name
           tool_class.mcp_output_column_names = settings[:columns]&.map(&:to_sym)
