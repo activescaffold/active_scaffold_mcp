@@ -723,6 +723,27 @@ class ActiveScaffoldMCPTest < Minitest::Test
                     tool_class.ancestors.index(ActiveScaffold::Actions::List)
   end
 
+  def test_list_tool_generator_includes_config_list_and_uses_its_list_columns
+    config_list_module = Module.new do
+      def list_columns
+        [:config_list_column]
+      end
+    end
+    ActiveScaffold::Actions.const_set(:ConfigList, config_list_module)
+
+    tool_class = build_list_tool_class(config_list_action: true)
+
+    assert_includes tool_class.ancestors, config_list_module
+    assert_operator tool_class.ancestors.index(config_list_module), :<,
+                    tool_class.ancestors.index(ActiveScaffold::Actions::List)
+    assert_equal [:config_list_column], tool_class.new.send(:mcp_default_output_columns)
+  ensure
+    if defined?(config_list_module) && ActiveScaffold::Actions.const_defined?(:ConfigList, false) &&
+        ActiveScaffold::Actions.const_get(:ConfigList, false).equal?(config_list_module)
+      ActiveScaffold::Actions.send(:remove_const, :ConfigList)
+    end
+  end
+
   def test_list_tool_generator_uses_configured_name_and_label
     tool_class = build_list_tool_class(name: "list_tickets", label: "Support tickets")
 
@@ -961,6 +982,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     mcp_label = settings.delete(:mcp_label)
     action_filters = settings.delete(:action_filters) || []
     search_action = settings.delete(:search_action)
+    config_list_action = settings.delete(:config_list_action)
     column = Struct.new(:name, :type).new("id", :integer)
     model_name = Struct.new(:route_key) do
       def human(count:)
@@ -984,7 +1006,9 @@ class ActiveScaffoldMCPTest < Minitest::Test
       end
     end.new(configured_search_columns)
     search_config = Struct.new(:columns).new(search_columns)
-    actions = search_action ? %i[list search] : [:list]
+    actions = [:list]
+    actions << :search if search_action
+    actions << :config_list if config_list_action
     core = Struct.new(:model, :_columns_hash, :actions, :search).new(
       model,
       {"id" => column},

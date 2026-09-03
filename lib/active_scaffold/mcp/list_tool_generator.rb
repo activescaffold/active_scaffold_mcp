@@ -19,6 +19,7 @@ module ActiveScaffold
 
           Class.new(ActiveScaffold::MCP::ListTool).tap do |tool_class|
             configure_tool_class(tool_class, controller_class:, action_name:, core_config:, mcp_config:, settings:)
+            include_config_list(tool_class, core_config)
             tool_class.read_only
 
             add_column_filter_properties(tool_class, core_config, settings, mappings)
@@ -33,6 +34,12 @@ module ActiveScaffold
         end
 
         private
+
+        def include_config_list(tool_class, core_config)
+          return unless core_config.actions.include?(:config_list)
+
+          tool_class.include "ActiveScaffold::Actions::ConfigList".constantize
+        end
 
         def description(title, mappings)
           filter_types = []
