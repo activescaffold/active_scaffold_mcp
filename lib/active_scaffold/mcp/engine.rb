@@ -12,6 +12,12 @@ module ActiveScaffold
           config.actions << :mcp unless config.actions.include?(:mcp)
         end
       end
+
+      config.to_prepare do
+        if Rails.application.config.reloading_enabled?
+          ActiveScaffold::MCP.reload_generated_tools!
+        end
+      end
     end
   end
 end

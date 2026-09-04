@@ -1100,6 +1100,58 @@ class ActiveScaffoldMCPTest < Minitest::Test
     ActiveScaffold::Config::MCP.tool_generator = previous_generator
   end
 
+  def test_mcp_tracks_named_controllers_for_reload
+    controller = Class.new
+    Object.const_set(:MCPTrackedWidgetsController, controller)
+    generator = Object.new
+    generator.define_singleton_method(:generate_tools_for) { |_controller, _config| [] }
+    previous_generator = ActiveScaffold::Config::MCP.tool_generator
+    ActiveScaffold::Config::MCP.tool_generator = generator
+
+    ActiveScaffold::MCP.generate_tools_for(controller, Object.new)
+
+    assert_includes ActiveScaffold::MCP.generated_controller_names, "MCPTrackedWidgetsController"
+  ensure
+    ActiveScaffold::MCP.generated_controller_names.delete("MCPTrackedWidgetsController")
+    ActiveScaffold::Config::MCP.tool_generator = previous_generator
+    Object.send(:remove_const, :MCPTrackedWidgetsController) if Object.const_defined?(:MCPTrackedWidgetsController, false)
+  end
+
+  def test_mcp_reload_replaces_generated_tools_using_current_controller
+    original_tools = ActionMCP::ToolsRegistry.items.dup
+    stale_tool = Class.new(ActiveScaffold::MCP::Tool)
+    manual_tool = Class.new(ActionMCP::Tool) do
+      tool_name "manual_reload_test"
+    end
+    ActionMCP::ToolsRegistry.clear!
+    ActionMCP::ToolsRegistry.register(manual_tool)
+    ActionMCP::ToolsRegistry.items["stale"] = stale_tool
+    ActiveScaffold::MCP.generated_controller_names << "MCPReloadedWidgetsController"
+
+    action_config = Object.new
+    active_scaffold_config = Struct.new(:mcp).new(action_config)
+    current_controller = Class.new
+    current_controller.define_singleton_method(:active_scaffold_config) { active_scaffold_config }
+    Object.const_set(:MCPReloadedWidgetsController, current_controller)
+    calls = []
+    generator = Object.new
+    generator.define_singleton_method(:generate_tools_for) { |*arguments| calls << arguments }
+    previous_generator = ActiveScaffold::Config::MCP.tool_generator
+    ActiveScaffold::Config::MCP.tool_generator = generator
+
+    ActiveScaffold::MCP.reload_generated_tools!
+
+    assert_equal [[current_controller, action_config]], calls
+    assert_same manual_tool, ActionMCP::ToolsRegistry.items["manual_reload_test"]
+    refute ActionMCP::ToolsRegistry.items.key?("stale")
+  ensure
+    ActiveScaffold::MCP.generated_controller_names.delete("MCPReloadedWidgetsController")
+    ActiveScaffold::Config::MCP.tool_generator = previous_generator
+    ActionMCP::ToolsRegistry.clear!
+    original_tools&.each_value { |tool_class| ActionMCP::ToolsRegistry.register(tool_class) }
+    Object.send(:remove_const, :MCPReloadedWidgetsController) if Object.const_defined?(:MCPReloadedWidgetsController, false)
+  end
+
   def test_configured_base_tool_is_resolved_from_a_class_name_or_callable
     previous_base = ActiveScaffold::Config::MCP.base_tool
     ActiveScaffold::Config::MCP.base_tool = "ActionMCP::Tool"
