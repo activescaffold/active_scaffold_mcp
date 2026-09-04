@@ -174,20 +174,70 @@ module ActiveScaffold
       end
 
       def mcp_column_value(record, column)
-        return mcp_association_value(record.public_send(column.association.name), column) if column.association
+        return mcp_association_value(record, record.public_send(column.association.name), column) if column.association
         return record.public_send(column.name) if record.respond_to?(column.name)
       end
 
-      def mcp_association_value(value, column)
+      def mcp_association_value(record, value, column)
         if column.association.collection?
-          value.map { |associated_record| mcp_associated_record_hash(associated_record) }
+          mcp_collection_association_value(record, value, column)
         elsif value
-          mcp_associated_record_hash(value)
+          mcp_associated_record_hash(value, polymorphic: column.association.polymorphic?)
         end
       end
 
-      def mcp_associated_record_hash(record)
-        {id: record.id, label: record.to_label}
+      def mcp_collection_association_value(record, value, column)
+        associated_limit = column.associated_limit
+        associated_number = column.associated_number?
+
+        if associated_limit.nil?
+          return value.map { |associated_record| mcp_associated_record_hash(associated_record) }
+        end
+
+        count = mcp_association_size(record, value, column) if associated_number
+        return associated_number ? count : nil if associated_limit.zero?
+
+        loaded_limit = associated_number ? associated_limit : associated_limit + 1
+        associated_records = mcp_limited_associated_records(value, loaded_limit)
+        more_records = associated_number ? count > associated_limit : associated_records.size > associated_limit
+        associated_records = associated_records.first(associated_limit)
+        records = associated_records.map { |associated_record| mcp_associated_record_hash(associated_record) }
+        displayed_count = if associated_number
+                            count
+                          elsif more_records
+                            ">#{associated_limit}"
+                          else
+                            records.size
+                          end
+
+        {
+          (more_records ? :first_records : :records) => records,
+          count: displayed_count
+        }
+      end
+
+      def mcp_limited_associated_records(value, limit)
+        if value.respond_to?(:loaded?) && value.loaded?
+          value.first(limit)
+        elsif value.respond_to?(:limit)
+          value.limit(limit).to_a
+        else
+          value.first(limit)
+        end
+      end
+
+      def mcp_association_size(record, value, column)
+        cached_counts = @counts&.dig(column.name)
+        return value.size unless cached_counts
+
+        key = column.association.primary_key if count_on_association_class?(column)
+        cached_counts[record.public_send(key || :id)] || 0
+      end
+
+      def mcp_associated_record_hash(record, polymorphic: false)
+        result = {id: record.id, label: record.to_label}
+        result[:model] = record.class.model_name.human if polymorphic
+        result
       end
 
       def mcp_default_output_columns

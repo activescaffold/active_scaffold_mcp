@@ -4,6 +4,16 @@
 
 The gem is under initial development. The first implementation will provide a configuration DSL, a generated-tool registry, and read-only list and show tools.
 
+Association columns use ActiveScaffold's list settings in MCP results. An
+unlimited collection (`associated_limit = nil`) is returned as an array. A
+positive limit returns `{records: [...], count: N}` when the complete
+association fits. A truncated association uses `first_records` instead of
+`records`. The count is exact when `associated_number` is enabled; otherwise
+MCP loads one extra record and reports a lower bound such as `count: ">3"`.
+A zero limit is count-only (or `null` when `associated_number` is disabled).
+Singular polymorphic associations also include their human model name as
+`model`.
+
 Configure the actions that may become MCP tools in the controller:
 
 ```ruby

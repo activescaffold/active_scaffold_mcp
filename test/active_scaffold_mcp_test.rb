@@ -915,10 +915,12 @@ class ActiveScaffoldMCPTest < Minitest::Test
   end
 
   def test_list_tool_serializes_singular_and_collection_associations_as_id_and_label
-    association_class = Struct.new(:name, :collection?)
+    association_class = Struct.new(:name, :collection?, :polymorphic?)
     column_class = Struct.new(:name, :association)
-    singular_column = column_class.new(:customer, association_class.new(:customer, false))
-    collection_column = column_class.new(:tags, association_class.new(:tags, true))
+    singular_column = column_class.new(:customer, association_class.new(:customer, false, false))
+    collection_column = column_class.new(:tags, association_class.new(:tags, true, false))
+    collection_column.define_singleton_method(:associated_limit) { nil }
+    collection_column.define_singleton_method(:associated_number?) { true }
     associated_record_class = Struct.new(:id, :label) do
       def to_label
         label
@@ -943,6 +945,142 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal(
       {customer: nil, tags: []},
       tool.send(:mcp_record_hash, record.class.new(nil, []), [singular_column, collection_column])
+    )
+  end
+
+  def test_collection_associations_honor_associated_limit_and_number
+    association = Struct.new(:name, :collection?).new(:tags, true)
+    column = Struct.new(:name, :association, :associated_limit, :associated_number?).new(:tags, association, 2, true)
+    associated_record_class = Struct.new(:id, :label) do
+      def to_label
+        label
+      end
+    end
+    tags = [
+      associated_record_class.new(2, "Important"),
+      associated_record_class.new(3, "Open"),
+      associated_record_class.new(4, "Customer visible")
+    ]
+    record = Struct.new(:id, :tags) do
+      def authorized_for?(_options)
+        true
+      end
+    end.new(1, tags)
+
+    assert_equal(
+      {
+        tags: {
+          first_records: [{id: 2, label: "Important"}, {id: 3, label: "Open"}],
+          count: 3
+        }
+      },
+      build_list_tool_class.new.send(:mcp_record_hash, record, [column])
+    )
+  end
+
+  def test_collection_associations_can_return_only_the_cached_count
+    association = Struct.new(:name, :collection?, :primary_key).new(:tags, true, :account_id)
+    column = Struct.new(:name, :association, :associated_limit, :associated_number?).new(:tags, association, 0, true)
+    record = Struct.new(:id, :account_id, :tags) do
+      def authorized_for?(_options)
+        true
+      end
+    end.new(1, 9, Object.new)
+    tool = build_list_tool_class.new
+    tool.instance_variable_set(:@counts, {tags: {9 => 37}})
+    tool.define_singleton_method(:count_on_association_class?) { |_column| true }
+
+    assert_equal({tags: 37}, tool.send(:mcp_record_hash, record, [column]))
+  end
+
+  def test_positive_associated_limit_does_not_load_the_whole_collection
+    association = Struct.new(:name, :collection?).new(:tags, true)
+    column = Struct.new(:name, :association, :associated_limit, :associated_number?).new(:tags, association, 2, false)
+    associated_record = Struct.new(:id) do
+      def to_label
+        "Tag #{id}"
+      end
+    end
+    limited_relation = Object.new
+    limited_relation.define_singleton_method(:to_a) do
+      [associated_record.new(1), associated_record.new(2), associated_record.new(3)]
+    end
+    collection = Object.new
+    collection.define_singleton_method(:loaded?) { false }
+    collection.define_singleton_method(:limit) do |limit|
+      raise "unexpected limit" unless limit == 3
+
+      limited_relation
+    end
+    collection.define_singleton_method(:map) { raise "the whole collection must not be loaded" }
+    record = Struct.new(:tags) do
+      def authorized_for?(_options)
+        true
+      end
+    end.new(collection)
+
+    assert_equal(
+      {
+        tags: {
+          first_records: [{id: 1, label: "Tag 1"}, {id: 2, label: "Tag 2"}],
+          count: ">2"
+        }
+      },
+      build_list_tool_class.new.send(:mcp_record_hash, record, [column])
+    )
+  end
+
+  def test_positive_associated_limit_reports_when_all_records_were_loaded_without_counting
+    association = Struct.new(:name, :collection?).new(:tags, true)
+    column = Struct.new(:name, :association, :associated_limit, :associated_number?).new(:tags, association, 3, false)
+    associated_record = Struct.new(:id) do
+      def to_label
+        "Tag #{id}"
+      end
+    end
+    record = Struct.new(:tags) do
+      def authorized_for?(_options)
+        true
+      end
+    end.new([associated_record.new(1), associated_record.new(2)])
+
+    assert_equal(
+      {
+        tags: {
+          records: [{id: 1, label: "Tag 1"}, {id: 2, label: "Tag 2"}],
+          count: 2
+        }
+      },
+      build_list_tool_class.new.send(:mcp_record_hash, record, [column])
+    )
+  end
+
+  def test_polymorphic_singular_association_includes_its_model
+    association = Struct.new(:name, :collection?, :polymorphic?).new(:record, false, true)
+    column = Struct.new(:name, :association).new(:record, association)
+    associated_record_class = Class.new do
+      extend ActiveModel::Naming
+
+      attr_reader :id
+
+      def initialize(id)
+        @id = id
+      end
+
+      def to_label
+        "Router 7"
+      end
+    end
+    associated_record_class.define_singleton_method(:name) { "Router" }
+    record = Struct.new(:record) do
+      def authorized_for?(_options)
+        true
+      end
+    end.new(associated_record_class.new(7))
+
+    assert_equal(
+      {record: {id: 7, label: "Router 7", model: "Router"}},
+      build_list_tool_class.new.send(:mcp_record_hash, record, [column])
     )
   end
 
