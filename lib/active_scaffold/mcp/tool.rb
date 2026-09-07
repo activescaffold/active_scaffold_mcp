@@ -86,8 +86,9 @@ module ActiveScaffold
       end
 
       def report_active_scaffold_exception(exception)
+        arguments = mcp_exception_arguments
         Rails.logger.error(
-          "[ActiveScaffold::MCP] #{self.class.tool_name} failed: " \
+          "[ActiveScaffold::MCP] #{self.class.tool_name} failed with arguments #{arguments.inspect}: " \
           "#{exception.full_message(highlight: false, order: :top)}"
         )
         notify_active_scaffold_exception(exception) if respond_to?(:notify_active_scaffold_exception, true)
@@ -96,6 +97,16 @@ module ActiveScaffold
           "[ActiveScaffold::MCP] exception notification failed for #{self.class.tool_name}: " \
           "#{notification_exception.full_message(highlight: false, order: :top)}"
         )
+      end
+
+      def mcp_exception_arguments
+        arguments = if defined?(@_wire_arguments)
+                      @_wire_arguments
+                    else
+                      attributes.compact.merge(@_provided_additional_attributes)
+                    end
+        filters = Rails.application&.config&.filter_parameters || []
+        ActiveSupport::ParameterFilter.new(filters).filter(arguments.deep_dup)
       end
 
       # Let the configured base tool customize execution authorization failures.

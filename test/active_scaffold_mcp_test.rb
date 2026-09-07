@@ -81,6 +81,9 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
   def test_base_tool_logs_and_notifies_an_exception_before_action_mcp_hides_it
     previous_logger = Rails.logger
+    previous_application = Rails.application
+    application = Struct.new(:config).new(Struct.new(:filter_parameters).new([:token]))
+    Rails.define_singleton_method(:application) { application }
     logged = []
     logger = Object.new
     logger.define_singleton_method(:error) { |message| logged << message }
@@ -90,6 +93,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     end
     tool_class.abstract!
     tool = tool_class.new
+    tool.instance_variable_set(:@_wire_arguments, {"case_number" => "S0000007", "token" => "secret"})
     tool.define_singleton_method(:notify_active_scaffold_exception) { |exception| notified = exception }
     exception = RuntimeError.new("visible in the server log")
     exception.set_backtrace(["list_tool.rb:10:in 'perform'"])
@@ -99,9 +103,13 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     assert_equal "visible in the server log", notified.message
     assert_includes logged.join("\n"), "failing_active_scaffold_tool failed"
+    assert_includes logged.join("\n"), '"case_number" => "S0000007"'
+    assert_includes logged.join("\n"), '"token" => "[FILTERED]"'
+    refute_includes logged.join("\n"), "secret"
     assert_includes logged.join("\n"), "visible in the server log"
   ensure
     Rails.logger = previous_logger
+    Rails.define_singleton_method(:application) { previous_application }
   end
 
   def test_base_tool_class_authorization_hook_receives_tool_context
