@@ -684,17 +684,51 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal({"record" => {}}, rendered)
   end
 
-  def test_show_tool_rejects_an_ambiguous_lookup
+  def test_show_tool_reports_an_ambiguous_lookup_to_mcp
     relation = Object.new
     relation.define_singleton_method(:where) { |_arguments| relation }
     relation.define_singleton_method(:limit) { |_value| relation }
     relation.define_singleton_method(:pluck) { |_column| [7, 8] }
     tool = build_show_tool_class(lookup_columns: %i[case_number]).new(case_number: "duplicate")
     tool.define_singleton_method(:filtered_query) { relation }
+    tool.define_singleton_method(:do_show) { flunk "show must not run for an ambiguous lookup" }
+    tool.define_singleton_method(:with_active_scaffold_context) { |&block| block.call }
 
-    assert_raises(ActiveScaffold::MCP::ShowTool::AmbiguousLookup) do
-      tool.send(:resolve_lookup_id)
-    end
+    response = tool.call
+
+    assert response.error?
+    assert_equal true, response.to_h[:isError]
+    assert_includes response.to_h.dig(:content, 0, :text), "More than one record found for case_number"
+    assert_includes response.to_h.dig(:content, 0, :text), "use id instead"
+  end
+
+  def test_show_tool_reports_a_missing_lookup_to_mcp
+    relation = Object.new
+    relation.define_singleton_method(:where) { |_arguments| relation }
+    relation.define_singleton_method(:limit) { |_value| relation }
+    relation.define_singleton_method(:pluck) { |_column| [] }
+    tool = build_show_tool_class(lookup_columns: %i[case_number]).new(case_number: "missing")
+    tool.define_singleton_method(:filtered_query) { relation }
+    tool.define_singleton_method(:do_show) { flunk "show must not run for a missing lookup" }
+    tool.define_singleton_method(:with_active_scaffold_context) { |&block| block.call }
+
+    response = tool.call
+
+    assert response.error?
+    assert_equal true, response.to_h[:isError]
+    assert_includes response.to_h.dig(:content, 0, :text), "No record found for case_number"
+  end
+
+  def test_show_tool_reports_a_missing_id_to_mcp
+    tool = build_show_tool_class.new(id: 99)
+    tool.define_singleton_method(:do_show) { raise ActiveRecord::RecordNotFound }
+    tool.define_singleton_method(:with_active_scaffold_context) { |&block| block.call }
+
+    response = tool.call
+
+    assert response.error?
+    assert_equal true, response.to_h[:isError]
+    assert_includes response.to_h.dig(:content, 0, :text), "No record found for id 99"
   end
 
   def test_show_tool_applies_show_authorization

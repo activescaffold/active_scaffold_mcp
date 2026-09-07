@@ -5,9 +5,6 @@ require "json"
 module ActiveScaffold
   module MCP
     class ShowTool < Tool
-      class LookupNotFound < StandardError; end
-      class AmbiguousLookup < StandardError; end
-
       abstract!
 
       class_attribute :mcp_lookup_column_names, instance_accessor: false, default: [].freeze
@@ -16,9 +13,12 @@ module ActiveScaffold
       validate :exactly_one_lookup_argument
 
       def perform
-        resolve_lookup_id
+        return unless resolve_lookup_id
+
         do_show
         render(text: JSON.generate(record: mcp_record_hash(@record, mcp_output_columns)))
+      rescue ActiveRecord::RecordNotFound
+        report_error("No record found for id #{params[:id].inspect}")
       end
 
       private
@@ -43,16 +43,23 @@ module ActiveScaffold
       end
 
       def resolve_lookup_id
-        return if mcp_argument_provided?(:id)
+        return true if mcp_argument_provided?(:id)
 
         column_name = self.class.mcp_lookup_column_names.find { |name| mcp_argument_provided?(name) }
         ids = filtered_query.where(column_name => public_send(column_name))
                             .limit(2)
                             .pluck(self.class.mcp_primary_key_name)
-        raise LookupNotFound, "No record found for #{column_name}" if ids.empty?
-        raise AmbiguousLookup, "More than one record found for #{column_name}" if ids.many?
+        if ids.empty?
+          report_error("No record found for #{column_name} #{public_send(column_name).inspect}")
+          return false
+        end
+        if ids.many?
+          report_error("More than one record found for #{column_name} #{public_send(column_name).inspect}; use id instead")
+          return false
+        end
 
         params[:id] = ids.first
+        true
       end
     end
   end
