@@ -112,6 +112,23 @@ class ActiveScaffoldMCPTest < Minitest::Test
     Rails.define_singleton_method(:application) { previous_application }
   end
 
+  def test_base_tool_reuses_parameter_filter_until_configuration_changes
+    previous_application = Rails.application
+    filter_parameters = [:token]
+    application = Struct.new(:config).new(Struct.new(:filter_parameters).new(filter_parameters))
+    Rails.define_singleton_method(:application) { application }
+
+    first_filter = ActiveScaffold::MCP::Tool.parameter_filter
+
+    assert_same first_filter, ActiveScaffold::MCP::Tool.parameter_filter
+
+    filter_parameters << :password
+
+    refute_same first_filter, ActiveScaffold::MCP::Tool.parameter_filter
+  ensure
+    Rails.define_singleton_method(:application) { previous_application }
+  end
+
   def test_base_tool_class_authorization_hook_receives_tool_context
     calls = []
     controller_class = Class.new

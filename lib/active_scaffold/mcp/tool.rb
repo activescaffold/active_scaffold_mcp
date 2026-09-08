@@ -12,6 +12,14 @@ module ActiveScaffold
       class_attribute :mcp_param_mappings, instance_accessor: false, default: {}
 
       class << self
+        def parameter_filter
+          filters = Rails.application&.config&.filter_parameters || []
+          return @parameter_filter if @parameter_filter_filters == filters
+
+          @parameter_filter_filters = filters.dup.freeze
+          @parameter_filter = ActiveSupport::ParameterFilter.new(filters)
+        end
+
         def tool_authorized?(user = ActionMCP::Current.user)
           return true unless respond_to?(:active_scaffold_tool_authorized?)
 
@@ -105,8 +113,7 @@ module ActiveScaffold
                     else
                       attributes.compact.merge(@_provided_additional_attributes)
                     end
-        filters = Rails.application&.config&.filter_parameters || []
-        ActiveSupport::ParameterFilter.new(filters).filter(arguments.deep_dup)
+        ActiveScaffold::MCP::Tool.parameter_filter.filter(arguments.deep_dup)
       end
 
       # Let the configured base tool customize execution authorization failures.
