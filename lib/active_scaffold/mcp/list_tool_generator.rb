@@ -173,7 +173,7 @@ module ActiveScaffold
 
         def named_filter_description(filter)
           sentences = [filter.description || "Apply the #{filter.name} list filter"]
-          sentences << "When omitted, the default option is #{filter.default_option}"
+          sentences << "When omitted, the server uses the default option '#{filter.default_option}'"
           if filter.security_method_set?
             sentences << "This filter may be disallowed in the current context"
           else

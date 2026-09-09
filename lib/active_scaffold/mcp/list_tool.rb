@@ -40,16 +40,23 @@ module ActiveScaffold
       private
 
       def report_disallowed_filters
-        filters = Array(@filter_states).filter_map do |name, state|
+        disallowed_filters = Array(@filter_states).filter_map do |name, state|
           next unless state[:requested] && state[:status] == :disallowed
 
-          "#{name}=#{params[name].inspect}"
+          selection = (state[:option]&.name || params[name]).to_s
+          ["`#{name}`", "`#{name}=#{selection.inspect}`"]
         end
-        return false if filters.empty?
+        return false if disallowed_filters.empty?
+
+        filter_names = disallowed_filters.map(&:first)
+        filter_selections = disallowed_filters.map(&:last)
 
         report_error(
-          "The following requested filters are not allowed in the current context and were not applied: " \
-          "#{filters.to_sentence}. No records were returned; retry without those filters if appropriate."
+          "The following requested filter selections could not be applied in this call because they were not allowed " \
+          "for its current arguments and context: #{filter_selections.to_sentence}. No records were returned. " \
+          "Retry the same call with only #{filter_names.to_sentence} omitted and keep all other arguments unchanged. " \
+          "Filter availability is evaluated for each call, so the selection may be allowed with different arguments " \
+          "or context."
         )
         true
       end

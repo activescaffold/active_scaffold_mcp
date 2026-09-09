@@ -607,7 +607,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     refute_includes tool_class._schema_properties.keys, "filter_filter_status"
     assert_includes tool_class.description, "named list filters"
     assert_equal(
-      "Apply the filter_status list filter. When omitted, the default option is not_closed",
+      "Apply the filter_status list filter. When omitted, the server uses the default option 'not_closed'",
       tool_class._schema_properties.dig("filter_status", :description)
     )
     assert_equal "not_closed", tool_class.new(filter_status: "not_closed").params[:filter_status]
@@ -622,7 +622,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     tool_class = build_list_tool_class(filters: :all, action_filters: [filter])
 
     assert_equal(
-      "Choose which records to list. When omitted, the default option is open. " \
+      "Choose which records to list. When omitted, the server uses the default option 'open'. " \
       "These options may be disallowed in the current context: all",
       tool_class._schema_properties.dig("filter_status", :description)
     )
@@ -630,7 +630,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     filter.define_singleton_method(:security_method_set?) { true }
     tool_class = build_list_tool_class(filters: :all, action_filters: [filter])
     assert_equal(
-      "Choose which records to list. When omitted, the default option is open. " \
+      "Choose which records to list. When omitted, the server uses the default option 'open'. " \
       "This filter may be disallowed in the current context",
       tool_class._schema_properties.dig("filter_status", :description)
     )
@@ -946,13 +946,18 @@ class ActiveScaffoldMCPTest < Minitest::Test
   end
 
   def test_list_tool_reports_requested_filters_disallowed_by_active_scaffold
-    filter = ActiveScaffold::DataStructures::Filter.new(:filter_status, :select)
+    filter = ActiveScaffold::DataStructures::Filter.new(:filter, :select)
     filter.add(:all)
-    option = filter[:all]
-    tool = build_list_tool_class(filters: :all, action_filters: [filter]).new(filter_status: "all")
+    used_filter = ActiveScaffold::DataStructures::Filter.new(:used_filter, :select)
+    used_filter.add(:all)
+    tool = build_list_tool_class(filters: :all, action_filters: [filter, used_filter]).new(
+      filter: "all",
+      used_filter: "all"
+    )
     tool.define_singleton_method(:do_list) do
       @filter_states = {
-        filter_status: {option: option, status: :disallowed, default: true, requested: true}
+        filter: {option: filter[:all], status: :applied, default: true, requested: true},
+        used_filter: {option: used_filter[:all], status: :disallowed, default: true, requested: true}
       }
     end
     tool.define_singleton_method(:mcp_output_columns) { flunk "disallowed results must not be serialized" }
@@ -962,8 +967,38 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     assert response.error?
     assert_equal true, response.to_h[:isError]
-    assert_includes response.to_h.dig(:content, 0, :text), 'filter_status="all"'
+    assert_includes response.to_h.dig(:content, 0, :text), '`used_filter="all"`'
     assert_includes response.to_h.dig(:content, 0, :text), "No records were returned"
+    assert_includes response.to_h.dig(:content, 0, :text), "only `used_filter` omitted"
+    assert_includes response.to_h.dig(:content, 0, :text), "keep all other arguments unchanged"
+    assert_includes response.to_h.dig(:content, 0, :text), "may be allowed with different arguments"
+  end
+
+  def test_list_tool_reports_default_filter_disallowed_by_active_scaffold
+    filter = ActiveScaffold::DataStructures::Filter.new(:filter, :select)
+    filter.add(:all)
+    used_filter = ActiveScaffold::DataStructures::Filter.new(:used_filter, :select)
+    used_filter.add(:used)
+    tool = build_list_tool_class(filters: :all, action_filters: [filter, used_filter]).new(filter: "all")
+    pager = Struct.new(:count, :number_of_pages).new(0, 0)
+    page = Struct.new(:number, :pager).new(1, pager)
+    rendered = nil
+    tool.define_singleton_method(:do_list) do
+      @filter_states = {
+        filter: {option: filter[:all], status: :applied, default: true, requested: true},
+        used_filter: {option: used_filter[:used], status: :disallowed, default: true, requested: false}
+      }
+      @page = page
+      @records = []
+    end
+    tool.define_singleton_method(:mcp_output_columns) { [] }
+    tool.define_singleton_method(:report_error) { |message| flunk "unexpected error: #{message}" }
+    tool.define_singleton_method(:render) { |text:| rendered = JSON.parse(text) }
+
+    tool.perform
+
+    assert_equal [], rendered.fetch("records")
+    assert_equal 0, rendered.fetch("total_count")
   end
 
   def test_list_tool_disables_controller_conditional_get_support
