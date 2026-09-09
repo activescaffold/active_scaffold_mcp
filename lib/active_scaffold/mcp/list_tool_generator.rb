@@ -164,10 +164,22 @@ module ActiveScaffold
             option_names = filter.map { |option| option.name.to_s }
             tool_class.property property_name,
                                 type: "string",
-                                description: filter.description || "Apply the #{filter.name} list filter",
+                                description: named_filter_description(filter),
                                 default: filter.default_option&.to_s,
                                 enum: option_names
             mappings[property_name] = {target: filter.name, operator: :equal, source: :named_filter}
+          end
+        end
+
+        def named_filter_description(filter)
+          description = filter.description || "Apply the #{filter.name} list filter"
+          if filter.security_method_set?
+            "#{description}. This filter may be disallowed in the current context"
+          else
+            secured_options = filter.select(&:security_method_set?).map { |option| option.name.to_s }
+            return description if secured_options.empty?
+
+            "#{description}. These options may be disallowed in the current context: #{secured_options.to_sentence}"
           end
         end
 

@@ -26,6 +26,8 @@ module ActiveScaffold
           do_search
         end
         do_list
+        return if report_disallowed_filters
+
         columns = mcp_output_columns
         render(text: JSON.generate(
           records: @records.map { |record| mcp_record_hash(record, columns) },
@@ -36,6 +38,21 @@ module ActiveScaffold
       end
 
       private
+
+      def report_disallowed_filters
+        filters = Array(@filter_states).filter_map do |name, state|
+          next unless state[:requested] && state[:status] == :disallowed
+
+          "#{name}=#{params[name].inspect}"
+        end
+        return false if filters.empty?
+
+        report_error(
+          "The following requested filters are not allowed in the current context and were not applied: " \
+          "#{filters.to_sentence}. No records were returned; retry without those filters if appropriate."
+        )
+        true
+      end
 
       # MCP tools render their own result and do not participate in HTTP
       # conditional GET handling. Disabling it also avoids the controller-only

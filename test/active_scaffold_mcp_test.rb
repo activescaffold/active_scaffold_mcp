@@ -599,21 +599,35 @@ class ActiveScaffoldMCPTest < Minitest::Test
   end
 
   def test_list_tool_generator_exposes_named_filter_without_an_extra_prefix
-    option = Struct.new(:name).new(:not_closed)
-    filter_class = Struct.new(:name, :description, :default_option, :options) do
-      include Enumerable
-
-      def each(&block)
-        options.each(&block)
-      end
-    end
-    filter = filter_class.new(:filter_status, nil, :not_closed, [option])
+    filter = ActiveScaffold::DataStructures::Filter.new(:filter_status, :select)
+    filter.add(:not_closed)
     tool_class = build_list_tool_class(filters: :all, action_filters: [filter])
 
     assert_includes tool_class._schema_properties.keys, "filter_status"
     refute_includes tool_class._schema_properties.keys, "filter_filter_status"
     assert_includes tool_class.description, "named list filters"
     assert_equal "not_closed", tool_class.new(filter_status: "not_closed").params[:filter_status]
+  end
+
+  def test_list_tool_generator_warns_when_named_filter_may_be_disallowed
+    filter = ActiveScaffold::DataStructures::Filter.new(:filter_status, :select)
+    filter.description = "Choose which records to list"
+    filter.add(:open)
+    filter.add(:all, security_method: :all_allowed?)
+
+    tool_class = build_list_tool_class(filters: :all, action_filters: [filter])
+
+    assert_equal(
+      "Choose which records to list. These options may be disallowed in the current context: all",
+      tool_class._schema_properties.dig("filter_status", :description)
+    )
+
+    filter.define_singleton_method(:security_method_set?) { true }
+    tool_class = build_list_tool_class(filters: :all, action_filters: [filter])
+    assert_equal(
+      "Choose which records to list. This filter may be disallowed in the current context",
+      tool_class._schema_properties.dig("filter_status", :description)
+    )
   end
 
   def test_list_tool_generator_rejects_named_filter_conflicting_with_a_column_filter
@@ -923,6 +937,27 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal 2, rendered.fetch("page")
     assert_equal 57, rendered.fetch("total_count")
     assert_equal 3, rendered.fetch("total_pages")
+  end
+
+  def test_list_tool_reports_requested_filters_disallowed_by_active_scaffold
+    filter = ActiveScaffold::DataStructures::Filter.new(:filter_status, :select)
+    filter.add(:all)
+    option = filter[:all]
+    tool = build_list_tool_class(filters: :all, action_filters: [filter]).new(filter_status: "all")
+    tool.define_singleton_method(:do_list) do
+      @filter_states = {
+        filter_status: {option: option, status: :disallowed, default: true, requested: true}
+      }
+    end
+    tool.define_singleton_method(:mcp_output_columns) { flunk "disallowed results must not be serialized" }
+    tool.define_singleton_method(:with_active_scaffold_context) { |&block| block.call }
+
+    response = tool.call
+
+    assert response.error?
+    assert_equal true, response.to_h[:isError]
+    assert_includes response.to_h.dig(:content, 0, :text), 'filter_status="all"'
+    assert_includes response.to_h.dig(:content, 0, :text), "No records were returned"
   end
 
   def test_list_tool_disables_controller_conditional_get_support
