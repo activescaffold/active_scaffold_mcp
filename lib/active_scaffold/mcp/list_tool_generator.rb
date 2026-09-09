@@ -172,15 +172,17 @@ module ActiveScaffold
         end
 
         def named_filter_description(filter)
-          description = filter.description || "Apply the #{filter.name} list filter"
+          sentences = [filter.description || "Apply the #{filter.name} list filter"]
+          sentences << "When omitted, the default option is #{filter.default_option}"
           if filter.security_method_set?
-            "#{description}. This filter may be disallowed in the current context"
+            sentences << "This filter may be disallowed in the current context"
           else
             secured_options = filter.select(&:security_method_set?).map { |option| option.name.to_s }
-            return description if secured_options.empty?
-
-            "#{description}. These options may be disallowed in the current context: #{secured_options.to_sentence}"
+            if secured_options.any?
+              sentences << "These options may be disallowed in the current context: #{secured_options.to_sentence}"
+            end
           end
+          sentences.join(". ")
         end
 
         def selected_filters(action_config, configured_filters)

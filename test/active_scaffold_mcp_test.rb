@@ -606,6 +606,10 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_includes tool_class._schema_properties.keys, "filter_status"
     refute_includes tool_class._schema_properties.keys, "filter_filter_status"
     assert_includes tool_class.description, "named list filters"
+    assert_equal(
+      "Apply the filter_status list filter. When omitted, the default option is not_closed",
+      tool_class._schema_properties.dig("filter_status", :description)
+    )
     assert_equal "not_closed", tool_class.new(filter_status: "not_closed").params[:filter_status]
   end
 
@@ -618,14 +622,16 @@ class ActiveScaffoldMCPTest < Minitest::Test
     tool_class = build_list_tool_class(filters: :all, action_filters: [filter])
 
     assert_equal(
-      "Choose which records to list. These options may be disallowed in the current context: all",
+      "Choose which records to list. When omitted, the default option is open. " \
+      "These options may be disallowed in the current context: all",
       tool_class._schema_properties.dig("filter_status", :description)
     )
 
     filter.define_singleton_method(:security_method_set?) { true }
     tool_class = build_list_tool_class(filters: :all, action_filters: [filter])
     assert_equal(
-      "Choose which records to list. This filter may be disallowed in the current context",
+      "Choose which records to list. When omitted, the default option is open. " \
+      "This filter may be disallowed in the current context",
       tool_class._schema_properties.dig("filter_status", :description)
     )
   end
