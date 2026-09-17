@@ -714,7 +714,8 @@ class ActiveScaffoldMCPTest < Minitest::Test
     resolved_id = nil
     rendered = nil
     tool = build_show_tool_class(lookup_columns: %i[case_number]).new(case_number: "S0000007")
-    tool.define_singleton_method(:filtered_query) { relation }
+    tool.define_singleton_method(:beginning_of_chain) { relation }
+    tool.define_singleton_method(:filtered_query) { flunk "lookup resolution must not apply list filters" }
     tool.define_singleton_method(:do_show) do
       resolved_id = params[:id]
       @record = Object.new
@@ -735,7 +736,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     relation.define_singleton_method(:limit) { |_value| relation }
     relation.define_singleton_method(:pluck) { |_column| [7, 8] }
     tool = build_show_tool_class(lookup_columns: %i[case_number]).new(case_number: "duplicate")
-    tool.define_singleton_method(:filtered_query) { relation }
+    tool.define_singleton_method(:beginning_of_chain) { relation }
     tool.define_singleton_method(:do_show) { flunk "show must not run for an ambiguous lookup" }
     tool.define_singleton_method(:with_active_scaffold_context) { |&block| block.call }
 
@@ -753,7 +754,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     relation.define_singleton_method(:limit) { |_value| relation }
     relation.define_singleton_method(:pluck) { |_column| [] }
     tool = build_show_tool_class(lookup_columns: %i[case_number]).new(case_number: "missing")
-    tool.define_singleton_method(:filtered_query) { relation }
+    tool.define_singleton_method(:beginning_of_chain) { relation }
     tool.define_singleton_method(:do_show) { flunk "show must not run for a missing lookup" }
     tool.define_singleton_method(:with_active_scaffold_context) { |&block| block.call }
 

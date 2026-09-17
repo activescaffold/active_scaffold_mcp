@@ -46,9 +46,11 @@ module ActiveScaffold
         return true if mcp_argument_provided?(:id)
 
         column_name = self.class.mcp_lookup_column_names.find { |name| mcp_argument_provided?(name) }
-        ids = filtered_query.where(column_name => public_send(column_name))
-                            .limit(2)
-                            .pluck(self.class.mcp_primary_key_name)
+        # Resolve exact identifiers within the base scope, without list filters
+        # (including defaults) hiding an otherwise showable record.
+        ids = beginning_of_chain.where(column_name => public_send(column_name))
+                                .limit(2)
+                                .pluck(self.class.mcp_primary_key_name)
         if ids.empty?
           report_error("No record found for #{column_name} #{public_send(column_name).inspect}")
           return false
