@@ -31,19 +31,25 @@ module ActiveScaffold
         @generated_controller_names ||= Set.new
       end
 
+      def generated_tool_classes
+        @generated_tool_classes ||= Set.new
+      end
+
       def generate_tools_for(controller_class, action_config)
         generator = ActiveScaffold::Config::MCP.tool_generator
         return [] unless generator
 
         generated_controller_names << controller_class.name if controller_class.name.present?
-        generator.generate_tools_for(controller_class, action_config)
+        generator.generate_tools_for(controller_class, action_config).tap do |tools|
+          generated_tool_classes.merge(Array(tools).compact)
+        end
       end
 
       def reload_generated_tools!
         controller_classes = generated_controller_names.filter_map(&:safe_constantize)
-        ActionMCP::ToolsRegistry.items.delete_if do |_name, tool_class|
-          tool_class < ActiveScaffold::MCP::Tool
-        end
+        stale_tool_classes = generated_tool_classes.dup
+        ActionMCP::ToolsRegistry.items.delete_if { |_name, tool_class| stale_tool_classes.include?(tool_class) }
+        generated_tool_classes.clear
         controller_classes.each do |controller_class|
           generate_tools_for(controller_class, controller_class.active_scaffold_config.mcp)
         end
