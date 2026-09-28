@@ -28,7 +28,7 @@ module ActiveScaffold
       end
 
       def mcp_default_output_columns
-        active_scaffold_config.show.columns.visible_columns
+        active_scaffold_config.show.columns.visible_columns(flatten: true)
       end
 
       def exactly_one_lookup_argument

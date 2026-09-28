@@ -683,6 +683,19 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal({"record" => {"name" => "Widget 7"}}, rendered)
   end
 
+  def test_show_tool_flattens_grouped_output_columns
+    column = Struct.new(:name, :association).new(:name, nil)
+    action_columns = Object.new
+    action_columns.define_singleton_method(:visible_columns) do |options = {}|
+      options[:flatten] ? [column] : [self]
+    end
+    config = Struct.new(:show).new(Struct.new(:columns).new(action_columns))
+    tool = build_show_tool_class.new(id: 7)
+    tool.define_singleton_method(:active_scaffold_config) { config }
+
+    assert_equal [column], tool.send(:mcp_default_output_columns)
+  end
+
   def test_show_tool_generator_supports_exactly_one_lookup_column
     tool_class = build_show_tool_class(columns: %i[name], lookup_columns: %i[case_number])
 
