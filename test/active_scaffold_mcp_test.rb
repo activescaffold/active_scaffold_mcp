@@ -545,7 +545,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     model.define_singleton_method(:reflect_on_all_associations) do |macro|
       macro == :belongs_to ? [reflection] : []
     end
-    core = Struct.new(:model, :_columns_hash, :actions).new(
+    core = Struct.new(:model, :_columns_hash, :columns, :actions).new(
       model,
       {
         "id" => id_column,
@@ -554,6 +554,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
         "company_type" => company_type_column,
         "created_at" => created_column
       },
+      [],
       [:list]
     )
     configure_active_record_core(core)
@@ -875,6 +876,36 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal "router", tool_class.new(search: "router").params[:search]
     assert_includes tool_class.description, "full-text search"
     assert_includes tool_class.description, "Search text across Case number and Summary"
+  end
+
+  def test_list_tool_generator_adds_active_scaffold_sorting_for_non_output_virtual_columns
+    tool_class = build_list_tool_class(
+      columns: [:id],
+      sortable_columns: %i[id priority],
+      default_sorting: {priority: :desc, id: :asc}
+    )
+
+    assert_equal %w[id priority], tool_class._schema_properties.dig("sort", :enum)
+    assert_equal %w[asc desc], tool_class._schema_properties.dig("sort_direction", :enum)
+    assert_includes tool_class._schema_properties.dig("sort", :description),
+                    "Allowed columns: `id` and `priority`"
+    assert_includes tool_class._schema_properties.dig("sort", :description),
+                    "When sort is omitted, the ActiveScaffold default sorting is `priority` DESC and `id` ASC"
+    assert_includes tool_class.description, "Supports sorting by `id` and `priority`"
+    assert_includes tool_class.description,
+                    "When sort is omitted, the ActiveScaffold default sorting is `priority` DESC and `id` ASC"
+
+    default_direction = tool_class.new(sort: "priority")
+    assert_equal "priority", default_direction.params[:sort]
+    assert_equal "asc", default_direction.params[:sort_direction]
+
+    descending = tool_class.new(sort: "id", sort_direction: "desc")
+    assert_equal "id", descending.params[:sort]
+    assert_equal "desc", descending.params[:sort_direction]
+
+    default_sorting = tool_class.new
+    refute default_sorting.params.key?(:sort)
+    refute default_sorting.params.key?(:sort_direction)
   end
 
   def test_list_tool_search_can_be_disabled_for_mcp
@@ -1338,7 +1369,17 @@ class ActiveScaffoldMCPTest < Minitest::Test
     action_filters = settings.delete(:action_filters) || []
     search_action = settings.delete(:search_action)
     config_list_action = settings.delete(:config_list_action)
-    column = Struct.new(:name, :type).new("id", :integer)
+    sortable_column_names = Array(settings.delete(:sortable_columns)).map(&:to_s)
+    default_sorting = settings.delete(:default_sorting)
+    database_column = Struct.new(:name, :type).new("id", :integer)
+    active_scaffold_column_class = Struct.new(:name, :sortable) do
+      def sortable?
+        sortable
+      end
+    end
+    active_scaffold_columns = (["id"] + sortable_column_names).uniq.map do |name|
+      active_scaffold_column_class.new(name, sortable_column_names.include?(name))
+    end
     model_name = Struct.new(:route_key) do
       def human(count:)
         count == 2 ? "Widgets" : "Widget"
@@ -1364,15 +1405,20 @@ class ActiveScaffoldMCPTest < Minitest::Test
     actions = [:list]
     actions << :search if search_action
     actions << :config_list if config_list_action
-    core = Struct.new(:model, :_columns_hash, :actions, :search).new(
+    core = Struct.new(:model, :_columns_hash, :columns, :actions, :search).new(
       model,
-      {"id" => column},
+      {"id" => database_column},
+      active_scaffold_columns,
       actions,
       search_config
     )
     configure_active_record_core(core)
     mcp_config = list_mcp_config(core, name: mcp_name, label: mcp_label)
-    action_config = Struct.new(:per_page, :filters).new(20, action_filters)
+    sorting = default_sorting&.map do |name, direction|
+      column = active_scaffold_columns.find { |candidate| candidate.name == name.to_s }
+      [column, direction]
+    end
+    action_config = Struct.new(:per_page, :filters, :sorting).new(20, action_filters, sorting)
 
     ActiveScaffold::MCP::ListToolGenerator.generate_tool_for(
       controller_class: Class.new,

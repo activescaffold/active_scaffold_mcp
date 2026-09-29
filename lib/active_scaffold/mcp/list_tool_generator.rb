@@ -25,8 +25,10 @@ module ActiveScaffold
             add_column_filter_properties(tool_class, core_config, settings, mappings)
             add_named_filter_properties(tool_class, action_config, settings, mappings)
             add_search_property(tool_class, core_config, settings, mappings)
+            sortable_columns = add_sorting_properties(tool_class, core_config, action_config)
             add_pagination_properties(tool_class, action_config)
-            tool_class.description(settings[:description] || description(tool_class.title, mappings))
+            generated_description = description(tool_class.title, mappings, sortable_columns, action_config)
+            tool_class.description(settings[:description] || generated_description)
             tool_class.mcp_param_mappings = mappings.freeze
 
             include_extensions(tool_class, settings)
@@ -41,7 +43,7 @@ module ActiveScaffold
           tool_class.include "ActiveScaffold::Actions::ConfigList".constantize
         end
 
-        def description(title, mappings)
+        def description(title, mappings, sortable_columns, action_config)
           filter_types = []
           filter_types << "column filters" if mappings.any? { |_name, mapping| mapping[:source].nil? }
           filter_types << "named list filters" if mappings.any? { |_name, mapping| mapping[:source] == :named_filter }
@@ -51,6 +53,10 @@ module ActiveScaffold
           sentences << "Supports #{filter_types.to_sentence}" if filter_types.any?
           search_mapping = mappings.values.find { |mapping| mapping[:source] == :search }
           sentences << search_mapping[:description] if search_mapping
+          if sortable_columns.any?
+            sentences << "Supports sorting by #{formatted_column_names(sortable_columns)}"
+            sentences << default_sorting_description(action_config)
+          end
           sentences << "Use limit and page for pagination"
           "#{sentences.join('. ')}."
         end
@@ -217,6 +223,40 @@ module ActiveScaffold
 
         def search_enabled?(core_config, settings)
           settings.fetch(:search, true) && core_config.actions.include?(:search)
+        end
+
+        def add_sorting_properties(tool_class, core_config, action_config)
+          columns = core_config.columns.select(&:sortable?)
+          column_names = columns.map { |column| column.name.to_s }
+          return [] if column_names.empty?
+
+          tool_class.property :sort,
+                              type: "string",
+                              description: "Column to sort by. Allowed columns: #{formatted_column_names(column_names)}. " \
+                                           "#{default_sorting_description(action_config)}.",
+                              enum: column_names
+          tool_class.property :sort_direction,
+                              type: "string",
+                              description: "Sort direction used when sort is provided; defaults to asc",
+                              default: "asc",
+                              enum: %w[asc desc]
+          column_names
+        end
+
+        def formatted_column_names(column_names)
+          column_names.map { |name| "`#{name}`" }.to_sentence
+        end
+
+        def default_sorting_description(action_config)
+          sorting = action_config.sorting if action_config.respond_to?(:sorting)
+          clauses = Array(sorting).map do |column, direction|
+            "`#{column.name}` #{direction.to_s.upcase}"
+          end
+          if clauses.any?
+            "When sort is omitted, the ActiveScaffold default sorting is #{clauses.to_sentence}"
+          else
+            "When sort is omitted, the configured ActiveScaffold default sorting is used"
+          end
         end
 
         def add_pagination_properties(tool_class, action_config)

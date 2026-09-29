@@ -39,6 +39,15 @@ module ActiveScaffold
 
       private
 
+      def build_active_scaffold_params
+        super.tap do |active_scaffold_params|
+          next unless mcp_argument_provided?(:sort)
+
+          active_scaffold_params[:sort] = sort
+          active_scaffold_params[:sort_direction] = sort_direction.presence || "asc"
+        end
+      end
+
       def report_disallowed_filters
         disallowed_filters = Array(@filter_states).filter_map do |name, state|
           next unless state[:requested] && state[:status] == :disallowed
