@@ -74,6 +74,12 @@ module ActiveScaffold
         true
       end
 
+      def action_not_allowed_message
+        return super unless params[:config_list_view].present?
+
+        "List view #{params[:config_list_view].inspect} is not allowed for the current user."
+      end
+
       # MCP tools render their own result and do not participate in HTTP
       # conditional GET handling. Disabling it also avoids the controller-only
       # request dependency while ActiveScaffold builds a page.

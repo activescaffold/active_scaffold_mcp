@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "active_support/core_ext/module/attribute_accessors_per_thread"
 
 class ActiveScaffoldMCPTest < Minitest::Test
   def test_has_a_version
@@ -110,6 +111,46 @@ class ActiveScaffoldMCPTest < Minitest::Test
   ensure
     Rails.logger = previous_logger
     Rails.define_singleton_method(:application) { previous_application }
+  end
+
+  def test_base_tool_reports_generic_action_not_allowed_to_mcp_without_notifying
+    notified = false
+    tool_class = Class.new(ActiveScaffold::MCP::Tool) do
+      self.mcp_action_name = :update
+      tool_name "denied_active_scaffold_tool"
+
+      def perform
+        raise ActiveScaffold::ActionNotAllowed
+      end
+    end
+    tool = tool_class.new
+    tool.define_singleton_method(:notify_active_scaffold_exception) { |_exception| notified = true }
+
+    response = tool.call
+
+    assert response.error?
+    assert_equal true, response.to_h[:isError]
+    assert_includes response.to_h.dig(:content, 0, :text),
+                    "The requested update action is not allowed for the current user or request context."
+    refute notified
+  end
+
+  def test_list_tool_reports_selected_list_view_not_allowed_to_mcp
+    tool_class = Class.new(ActiveScaffold::MCP::ListTool) do
+      self.mcp_action_name = :list
+      tool_name "denied_active_scaffold_list_tool"
+
+      def perform
+        params[:config_list_view] = "Quick List"
+        raise ActiveScaffold::ActionNotAllowed
+      end
+    end
+
+    response = tool_class.new.call
+
+    assert response.error?
+    assert_equal true, response.to_h[:isError]
+    assert_includes response.to_h.dig(:content, 0, :text), 'List view "Quick List" is not allowed for the current user.'
   end
 
   def test_base_tool_reuses_parameter_filter_until_configuration_changes

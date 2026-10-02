@@ -86,6 +86,8 @@ module ActiveScaffold
         else
           unauthorized_tool!
         end
+      rescue ActiveScaffold::ActionNotAllowed
+        report_error(action_not_allowed_message)
       rescue StandardError => exception
         report_active_scaffold_exception(exception)
         raise
@@ -105,6 +107,10 @@ module ActiveScaffold
           "[ActiveScaffold::MCP] exception notification failed for #{self.class.tool_name}: " \
           "#{notification_exception.full_message(highlight: false, order: :top)}"
         )
+      end
+
+      def action_not_allowed_message
+        "The requested #{action_name.humanize.downcase} action is not allowed for the current user or request context."
       end
 
       def mcp_exception_arguments
