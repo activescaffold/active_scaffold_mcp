@@ -1094,6 +1094,23 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal [id_column, name_column], tool.send(:mcp_output_columns)
   end
 
+  def test_record_hash_omits_helper_only_virtual_columns_but_keeps_nil_model_values
+    column_class = Struct.new(:name, :association)
+    virtual_column = column_class.new(:duration, nil)
+    model_column = column_class.new(:finished_at, nil)
+    record = Struct.new(:finished_at) do
+      def authorized_for?(_options)
+        true
+      end
+    end.new(nil)
+    tool = build_list_tool_class.new
+
+    assert_equal(
+      {finished_at: nil},
+      tool.send(:mcp_record_hash, record, [virtual_column, model_column])
+    )
+  end
+
   def test_list_tool_serializes_singular_and_collection_associations_as_id_and_label
     association_class = Struct.new(:name, :collection?, :polymorphic?)
     column_class = Struct.new(:name, :association)

@@ -186,6 +186,7 @@ module ActiveScaffold
         columns.each_with_object({}) do |column, result|
           column_name = column.name
           next unless record.authorized_for?(crud_type: :read, column: column_name)
+          next unless column.association || record.respond_to?(column_name)
 
           result[column_name] = mcp_column_value(record, column)
         end
