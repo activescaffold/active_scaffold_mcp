@@ -341,6 +341,46 @@ Association columns have a stable representation: a singular association is
 `{"id": ..., "label": ...}` or `null`, and a collection association is an
 array of those objects. Labels use the associated record's `to_label`.
 
+### Virtual output columns
+
+When MCP `columns` are not configured explicitly, list and show tools reuse the
+visible columns from `config.list.columns` and `config.show.columns`,
+respectively. Those ActiveScaffold action columns may include virtual columns
+which exist only for the HTML view and are rendered by helpers such as
+`status_column(record, column)`.
+
+MCP does not call ActiveScaffold column helpers. They are view-layer methods
+which may return HTML, links, images, or other browser-specific output. During
+list and show serialization, a non-association column is included only when the
+record responds to the column name. Consequently, a helper-only virtual column
+is omitted from the MCP record instead of being returned as `null`:
+
+```ruby
+active_scaffold :device do |config|
+  config.list.columns = %i[id name status_badge]
+  config.show.columns = %i[id name status_badge]
+end
+
+module DevicesHelper
+  def status_badge_column(record, column)
+    content_tag(:span, record.status, class: "badge")
+  end
+end
+```
+
+In this example, generated list and show results contain `id` and `name`, but
+not `status_badge`. The same rule applies when the virtual column is selected
+explicitly with `config.mcp.list.columns`, `config.mcp.show.columns`, or the
+`columns:` option passed to `config.mcp.expose`.
+
+A virtual column backed by a public model instance method is included, using
+the method's raw return value rather than a column helper. Model-backed columns
+whose value is `nil` are still included as JSON `null`; omission is reserved
+for columns which are neither associations nor readable from the record. If an
+MCP tool needs a value that currently exists only as HTML presentation logic,
+expose a presentation-independent value from the model or another
+non-view-layer interface and select that column for MCP output.
+
 The result includes the records and ActiveScaffold's pagination metadata. The
 total reuses the count already calculated by ActiveScaffold rather than issuing
 another count query:
