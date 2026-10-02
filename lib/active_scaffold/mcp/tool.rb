@@ -160,7 +160,7 @@ module ActiveScaffold
       end
 
       def mcp_output_columns
-        configured_columns = self.class.mcp_output_column_names
+        configured_columns = mcp_configured_output_column_names
         columns = if configured_columns
                     configured_columns.filter_map do |column_name|
                       next unless active_scaffold_config.model.authorized_for?(crud_type: :read, column: column_name)
@@ -172,6 +172,10 @@ module ActiveScaffold
                   end
 
         (mcp_primary_key_columns + columns).uniq(&:name)
+      end
+
+      def mcp_configured_output_column_names
+        self.class.mcp_output_column_names
       end
 
       def mcp_primary_key_columns

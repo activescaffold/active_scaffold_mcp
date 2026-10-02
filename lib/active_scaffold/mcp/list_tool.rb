@@ -25,6 +25,7 @@ module ActiveScaffold
           store_search_params_into_session
           do_search
         end
+        set_default_sorting if mcp_argument_provided?(:list_view)
         do_list
         return if report_disallowed_filters
 
@@ -41,6 +42,9 @@ module ActiveScaffold
 
       def build_active_scaffold_params
         super.tap do |active_scaffold_params|
+          if mcp_argument_provided?(:list_view)
+            active_scaffold_params[:config_list_view] = list_view
+          end
           next unless mcp_argument_provided?(:sort)
 
           active_scaffold_params[:sort] = sort
@@ -83,6 +87,21 @@ module ActiveScaffold
 
       def mcp_default_output_columns
         list_columns
+      end
+
+      def mcp_configured_output_column_names
+        return if mcp_argument_provided?(:list_view)
+
+        super
+      end
+
+      def controller_name
+        self.class.active_scaffold_controller_class.controller_name
+      end
+
+      def active_scaffold_session_storage_key(id = nil)
+        id ||= params[:eid] || self.class.active_scaffold_controller_class.controller_path
+        "as:#{id}"
       end
     end
   end

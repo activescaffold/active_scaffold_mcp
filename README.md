@@ -78,6 +78,22 @@ filter categories are available and that `limit` and `page` control pagination.
 Set `description` explicitly when business-specific guidance would be more
 useful. `name` remains the protocol identifier.
 
+When the ActiveScaffold controller enables `config_list`, generated list tools
+also expose `list_view` when configured or saved named views are enabled. The
+agent-facing name is translated to ActiveScaffold's `config_list_view`
+parameter. A view selects its columns and default sorting. Configured names are
+listed in the description and used as the enum when they are the complete set.
+When saved views are enabled, the property remains free-form and its description
+names a generated `<list tool name>_views` tool. That companion tool returns
+authorized configured views and current-user saved views with the exact `value`
+to pass as `list_view`. Explicit MCP
+`columns:` configuration supplies the default output when `list_view` is
+omitted; an explicitly selected view supplies the output columns for that call.
+
+Named-view security methods execute in the generated tool, like other list and
+filter hooks. Define them in a shared module and add that module to the MCP list
+action's `modules`; the gem does not instantiate the source Rails controller.
+
 Use `expose` to introduce and configure a custom action that does not yet have
 an MCP configuration entry:
 

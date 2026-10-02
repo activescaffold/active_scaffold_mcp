@@ -820,17 +820,116 @@ class ActiveScaffoldMCPTest < Minitest::Test
   def test_list_tool_generator_includes_config_list_and_uses_its_list_columns
     config_list_module = Module.new do
       def list_columns
-        [:config_list_column]
+        [params[:config_list_view] || :config_list_column]
+      end
+
+      def set_default_sorting
+        @set_default_sorting_called = true
+        @list_view_default_sorting_applied = true unless params[:sort].present?
       end
     end
     ActiveScaffold::Actions.const_set(:ConfigList, config_list_module)
+    list_view_security = Module.new do
+      def compact_view_authorized?
+        current_user.equal?(ActionMCP::Current.user) && params[:config_list_view] == "Compact"
+      end
+    end
 
-    tool_class = build_list_tool_class(config_list_action: true)
+    tool_class = build_list_tool_class(
+      config_list_action: true,
+      named_views: ["Compact", "Billing"],
+      named_view_security_methods: {"Compact" => :compact_view_authorized?},
+      modules: [list_view_security]
+    )
 
     assert_includes tool_class.ancestors, config_list_module
     assert_operator tool_class.ancestors.index(config_list_module), :<,
                     tool_class.ancestors.index(ActiveScaffold::Actions::List)
     assert_equal [:config_list_column], tool_class.new.send(:mcp_default_output_columns)
+    assert_includes tool_class._schema_properties.keys, "list_view"
+    assert_includes tool_class._schema_properties.dig("list_view", :description),
+                    "Configured views: `Compact` and `Billing`"
+    assert_equal %w[Compact Billing], tool_class._schema_properties.dig("list_view", :enum)
+
+    saved_view_tools = build_list_tool_class(
+      config_list_action: true,
+      named_views: ["Compact"],
+      saved_list_views: true,
+      sortable_columns: [:id]
+    )
+    assert_equal 2, saved_view_tools.size
+    saved_views_tool_class, list_views_tool_class = saved_view_tools
+    assert_includes saved_views_tool_class._schema_properties.keys, "list_view"
+    assert_nil saved_views_tool_class._schema_properties.dig("list_view", :enum)
+    assert_includes saved_views_tool_class.description,
+                    "Call `list_widgets_views` to get all views available to the current user"
+    assert_equal "list_widgets_views", list_views_tool_class.tool_name
+    assert_equal "List views for Widgets", list_views_tool_class.title
+
+    fixed_columns_tool_class = build_list_tool_class(
+      config_list_action: true,
+      named_views: ["Compact"],
+      columns: [:id]
+    )
+    assert_includes fixed_columns_tool_class._schema_properties.keys, "list_view"
+    assert_equal [:id], fixed_columns_tool_class.new.send(:mcp_configured_output_column_names)
+    assert_nil fixed_columns_tool_class.new(list_view: "Compact").send(:mcp_configured_output_column_names)
+
+    tool = tool_class.new(list_view: "Compact")
+    assert_equal "Compact", tool.params[:config_list_view]
+    assert_equal ["Compact"], tool.send(:mcp_default_output_columns)
+    assert tool.send(:compact_view_authorized?)
+
+    pager = Struct.new(:count, :number_of_pages).new(0, 0)
+    page = Struct.new(:number, :pager).new(1, pager)
+    tool.define_singleton_method(:do_list) do
+      @page = page
+      @records = []
+    end
+    tool.define_singleton_method(:mcp_output_columns) { [] }
+    tool.define_singleton_method(:render) { |text:| JSON.parse(text) }
+    tool.perform
+    assert tool.instance_variable_get(:@set_default_sorting_called)
+    assert tool.instance_variable_get(:@list_view_default_sorting_applied)
+
+    saved_view_with_sort = saved_views_tool_class.new(list_view: "My saved view", sort: "id", sort_direction: "desc")
+    saved_view_with_sort.define_singleton_method(:do_list) do
+      @page = page
+      @records = []
+    end
+    saved_view_with_sort.define_singleton_method(:mcp_output_columns) { [] }
+    saved_view_with_sort.define_singleton_method(:render) { |text:| JSON.parse(text) }
+    saved_view_with_sort.perform
+
+    assert_equal "My saved view", saved_view_with_sort.params[:config_list_view]
+    assert_equal "id", saved_view_with_sort.params[:sort]
+    assert_equal "desc", saved_view_with_sort.params[:sort_direction]
+    refute saved_view_with_sort.instance_variable_get(:@list_view_default_sorting_applied)
+    assert_equal "widgets", saved_view_with_sort.send(:controller_name)
+    assert_equal "as:widgets", saved_view_with_sort.send(:active_scaffold_session_storage_key)
+
+    views_config = Struct.new(:named_views)
+    active_config = Struct.new(:config_list).new(views_config.new(
+      [Struct.new(:name, :security_method, :tooltip).new("Compact", nil, "Fewer columns")]
+    ))
+    list_views_tool = list_views_tool_class.new
+    list_views_tool.define_singleton_method(:active_scaffold_config) { active_config }
+    list_views_tool.define_singleton_method(:config_list_named_views) do
+      [["My saved view", "my-saved-view"], "Personal", ["Compact", "Compact"]]
+    end
+    rendered_views = nil
+    list_views_tool.define_singleton_method(:render) { |text:| rendered_views = JSON.parse(text) }
+
+    list_views_tool.perform
+
+    assert_equal(
+      [
+        {"label" => "Compact", "value" => "Compact", "source" => "configured", "description" => "Fewer columns"},
+        {"label" => "My saved view", "value" => "my-saved-view", "source" => "saved"},
+        {"label" => "Personal", "value" => "Personal", "source" => "saved"}
+      ],
+      rendered_views.fetch("views")
+    )
   ensure
     if defined?(config_list_module) && ActiveScaffold::Actions.const_defined?(:ConfigList, false) &&
         ActiveScaffold::Actions.const_get(:ConfigList, false).equal?(config_list_module)
@@ -1386,6 +1485,16 @@ class ActiveScaffoldMCPTest < Minitest::Test
     action_filters = settings.delete(:action_filters) || []
     search_action = settings.delete(:search_action)
     config_list_action = settings.delete(:config_list_action)
+    named_views = Array(settings.delete(:named_views))
+    named_view_security_methods = settings.delete(:named_view_security_methods) || {}
+    saved_list_views = settings.delete(:saved_list_views)
+    controller_class = settings.delete(:controller_class) || Class.new
+    unless controller_class.respond_to?(:controller_name)
+      controller_class.define_singleton_method(:controller_name) { "widgets" }
+    end
+    unless controller_class.respond_to?(:controller_path)
+      controller_class.define_singleton_method(:controller_path) { "widgets" }
+    end
     sortable_column_names = Array(settings.delete(:sortable_columns)).map(&:to_s)
     default_sorting = settings.delete(:default_sorting)
     database_column = Struct.new(:name, :type).new("id", :integer)
@@ -1422,13 +1531,24 @@ class ActiveScaffoldMCPTest < Minitest::Test
     actions = [:list]
     actions << :search if search_action
     actions << :config_list if config_list_action
-    core = Struct.new(:model, :_columns_hash, :columns, :actions, :search).new(
+    security_config = Struct.new(:current_user_method).new(:current_user)
+    core = Struct.new(:model, :_columns_hash, :columns, :actions, :search, :security).new(
       model,
       {"id" => database_column},
       active_scaffold_columns,
       actions,
-      search_config
+      search_config,
+      security_config
     )
+    if config_list_action
+      named_view_class = Struct.new(:name, :security_method)
+      config_list = Struct.new(:named_views, :named_views_method, :save_to_user).new(
+        named_views.map { |name| named_view_class.new(name, named_view_security_methods[name]) },
+        (:config_list_views if saved_list_views),
+        (:config_list_for if saved_list_views)
+      )
+      core.define_singleton_method(:config_list) { config_list }
+    end
     configure_active_record_core(core)
     mcp_config = list_mcp_config(core, name: mcp_name, label: mcp_label)
     sorting = default_sorting&.map do |name, direction|
@@ -1438,7 +1558,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     action_config = Struct.new(:per_page, :filters, :sorting).new(20, action_filters, sorting)
 
     ActiveScaffold::MCP::ListToolGenerator.generate_tool_for(
-      controller_class: Class.new,
+      controller_class: controller_class,
       action_name: :list,
       action_config: action_config,
       mcp_config: mcp_config,

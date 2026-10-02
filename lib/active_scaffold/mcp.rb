@@ -23,6 +23,7 @@ module ActiveScaffold
     autoload :ToolGenerator, "active_scaffold/mcp/tool_generator"
     autoload :ListTool, "active_scaffold/mcp/list_tool"
     autoload :ShowTool, "active_scaffold/mcp/show_tool"
+    autoload :ListViewsTool, "active_scaffold/mcp/list_views_tool"
     autoload :ShowToolGenerator, "active_scaffold/mcp/show_tool_generator"
     autoload :VERSION, "active_scaffold/mcp/version"
 
