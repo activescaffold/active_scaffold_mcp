@@ -1,0 +1,10 @@
+/.bundle/
+/coverage/
+/log/
+/pkg/
+/tmp/
+
+*.gem
+.byebug_history
+.DS_Store
+.jetbrains.ai.urles
