@@ -368,8 +368,9 @@ which exist only for the HTML view and are rendered by helpers such as
 MCP does not call ActiveScaffold column helpers. They are view-layer methods
 which may return HTML, links, images, or other browser-specific output. During
 list and show serialization, a non-association column is included only when the
-record responds to the column name. Consequently, a helper-only virtual column
-is omitted from the MCP record instead of being returned as `null`:
+record responds to the column name and that method can be called without
+arguments. Consequently, a helper-only virtual column is omitted from the MCP
+record instead of being returned as `null`:
 
 ```ruby
 active_scaffold :device do |config|
@@ -389,13 +390,18 @@ not `status_badge`. The same rule applies when the virtual column is selected
 explicitly with `config.mcp.list.columns`, `config.mcp.show.columns`, or the
 `columns:` option passed to `config.mcp.expose`.
 
-A virtual column backed by a public model instance method is included, using
-the method's raw return value rather than a column helper. Model-backed columns
-whose value is `nil` are still included as JSON `null`; omission is reserved
-for columns which are neither associations nor readable from the record. If an
-MCP tool needs a value that currently exists only as HTML presentation logic,
-expose a presentation-independent value from the model or another
-non-view-layer interface and select that column for MCP output.
+A virtual column backed by a public model instance method which accepts no
+arguments is included, using the method's raw return value rather than a column
+helper. Methods with only optional arguments can also be called without
+arguments and are included. Model-backed columns whose value is `nil` are still
+included as JSON `null`; omission is reserved for columns which are neither
+associations nor readable from the record without arguments.
+
+If an MCP tool needs a value which requires arguments or currently exists only
+as HTML presentation logic, add a module to the MCP action and define
+`<column>_column(record, column)`, following the same naming convention as an
+ActiveScaffold column helper. The method should return presentation-independent
+data rather than HTML. Select the column for MCP output as usual.
 
 The result includes the records and ActiveScaffold's pagination metadata. The
 total reuses the count already calculated by ActiveScaffold rather than issuing

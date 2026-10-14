@@ -1195,7 +1195,9 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
   def test_list_tool_filters_class_and_record_authorized_output_columns
     tool_class = build_list_tool_class(columns: %i[id secret])
-    model = Object.new
+    model = Class.new do
+      attr_accessor :id, :secret
+    end
     model.define_singleton_method(:authorized_for?) { |options| options[:column] == :id }
     model.define_singleton_method(:primary_key) { :id }
     column_class = Struct.new(:name, :association)
@@ -1221,7 +1223,9 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
   def test_output_columns_always_include_the_primary_key
     tool_class = build_list_tool_class(columns: %i[name])
-    model = Object.new
+    model = Class.new do
+      attr_accessor :id, :name
+    end
     model.define_singleton_method(:authorized_for?) { |_options| true }
     model.define_singleton_method(:primary_key) { :id }
     column_class = Struct.new(:name, :association)
@@ -1234,21 +1238,85 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal [id_column, name_column], tool.send(:mcp_output_columns)
   end
 
-  def test_record_hash_omits_helper_only_virtual_columns_but_keeps_nil_model_values
+  def test_output_columns_omit_helper_only_virtual_columns_but_keep_nil_model_values
     column_class = Struct.new(:name, :association)
     virtual_column = column_class.new(:duration, nil)
     model_column = column_class.new(:finished_at, nil)
-    record = Struct.new(:finished_at) do
+    model = Struct.new(:finished_at) do
       def authorized_for?(_options)
         true
       end
-    end.new(nil)
+    end
+    model.define_singleton_method(:authorized_for?) { |_options| true }
+    model.define_singleton_method(:primary_key) { nil }
+    columns = [virtual_column, model_column]
+    config = Struct.new(:model, :columns).new(model, columns.index_by(&:name))
     tool = build_list_tool_class.new
+    tool.define_singleton_method(:active_scaffold_config) { config }
+    tool.define_singleton_method(:mcp_default_output_columns) { columns }
+    output_columns = tool.send(:mcp_output_columns)
 
-    assert_equal(
-      {finished_at: nil},
-      tool.send(:mcp_record_hash, record, [virtual_column, model_column])
-    )
+    assert_equal [model_column], output_columns
+    assert_equal({finished_at: nil}, tool.send(:mcp_record_hash, model.new(nil), output_columns))
+  end
+
+  def test_output_columns_omit_model_methods_which_require_arguments
+    column_class = Struct.new(:name, :association)
+    columns = %i[required required_keyword optional splat].map { |name| column_class.new(name, nil) }
+    model = Class.new do
+      def required(value)
+        value
+      end
+
+      def required_keyword(value:)
+        value
+      end
+
+      def optional(value = "optional")
+        value
+      end
+
+      def splat(*values)
+        values
+      end
+    end
+    model.define_singleton_method(:authorized_for?) { |_options| true }
+    model.define_singleton_method(:primary_key) { nil }
+    config = Struct.new(:model, :columns).new(model, columns.index_by(&:name))
+    tool = build_list_tool_class.new
+    tool.define_singleton_method(:active_scaffold_config) { config }
+    tool.define_singleton_method(:mcp_default_output_columns) { columns }
+
+    assert_equal %i[optional splat], tool.send(:mcp_output_columns).map(&:name)
+  end
+
+  def test_output_columns_include_an_action_module_column_method
+    extension = Module.new do
+      def required_column(record, _column)
+        record.required("overridden")
+      end
+    end
+    column = Struct.new(:name, :association).new(:required, nil)
+    model = Class.new do
+      def authorized_for?(_options)
+        true
+      end
+
+      def required(value)
+        value
+      end
+    end
+    model.define_singleton_method(:authorized_for?) { |_options| true }
+    model.define_singleton_method(:primary_key) { nil }
+    config = Struct.new(:model, :columns).new(model, {required: column})
+    tool_class = build_list_tool_class(modules: [extension])
+    tool = tool_class.new
+    tool.define_singleton_method(:active_scaffold_config) { config }
+    tool.define_singleton_method(:mcp_default_output_columns) { [column] }
+    record = model.new
+
+    assert_equal [column], tool.send(:mcp_output_columns)
+    assert_equal({required: "overridden"}, tool.send(:mcp_record_hash, record, [column]))
   end
 
   def test_list_tool_serializes_singular_and_collection_associations_as_id_and_label

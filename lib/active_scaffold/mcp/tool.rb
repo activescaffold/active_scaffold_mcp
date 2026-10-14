@@ -177,7 +177,20 @@ module ActiveScaffold
                     mcp_default_output_columns
                   end
 
-        (mcp_primary_key_columns + columns).uniq(&:name)
+        (mcp_primary_key_columns + columns).uniq(&:name).select { |column| mcp_output_column?(column) }
+      end
+
+      def mcp_output_column?(column)
+        return true if column.association || respond_to?(mcp_column_method_name(column), true)
+
+        model = active_scaffold_config.model
+        return false unless model.public_method_defined?(column.name)
+
+        model.instance_method(column.name).parameters.none? { |type, _| type == :req || type == :keyreq }
+      end
+
+      def mcp_column_method_name(column)
+        :"#{column.name}_column"
       end
 
       def mcp_configured_output_column_names
@@ -196,15 +209,17 @@ module ActiveScaffold
         columns.each_with_object({}) do |column, result|
           column_name = column.name
           next unless record.authorized_for?(crud_type: :read, column: column_name)
-          next unless column.association || record.respond_to?(column_name)
 
           result[column_name] = mcp_column_value(record, column)
         end
       end
 
       def mcp_column_value(record, column)
+        column_method = mcp_column_method_name(column)
+        return send(column_method, record, column) if respond_to?(column_method, true)
         return mcp_association_value(record, record.public_send(column.association.name), column) if column.association
-        return record.public_send(column.name) if record.respond_to?(column.name)
+
+        record.public_send(column.name)
       end
 
       def mcp_association_value(record, value, column)
