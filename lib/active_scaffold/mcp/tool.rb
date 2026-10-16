@@ -10,6 +10,7 @@ module ActiveScaffold
       class_attribute :mcp_action_name, instance_accessor: false
       class_attribute :mcp_output_column_names, instance_accessor: false
       class_attribute :mcp_param_mappings, instance_accessor: false, default: {}
+      class_attribute :mcp_presenter_class, instance_accessor: false, default: ActiveScaffold::MCP::Presenter
 
       class << self
         def parameter_filter
@@ -74,6 +75,10 @@ module ActiveScaffold
 
       def active_scaffold_session_storage(_id = nil)
         @active_scaffold_session_storage ||= ActiveSupport::HashWithIndifferentAccess.new
+      end
+
+      def mcp_presenter
+        @mcp_presenter ||= self.class.mcp_presenter_class.new(self)
       end
 
       private
@@ -177,24 +182,20 @@ module ActiveScaffold
                     mcp_default_output_columns
                   end
 
-        (mcp_primary_key_columns + columns).uniq(&:name).select { |column| mcp_output_column?(column) }
-      end
-
-      def mcp_output_column?(column)
-        return true if column.association || respond_to?(mcp_column_method_name(column), true)
-
-        model = active_scaffold_config.model
-        return false unless model.public_method_defined?(column.name)
-
-        model.instance_method(column.name).parameters.none? { |type, _| type == :req || type == :keyreq }
-      end
-
-      def mcp_column_method_name(column)
-        :"#{column.name}_column"
+        (mcp_primary_key_columns + columns).uniq(&:name).select do |column|
+          mcp_presenter.presentable_column?(column)
+        end
       end
 
       def mcp_configured_output_column_names
         self.class.mcp_output_column_names
+      end
+
+      def mcp_record_hash(record, columns)
+        columns = columns.select do |column|
+          record.authorized_for?(crud_type: :read, column: column.name)
+        end
+        mcp_presenter.record(record, columns, association_counts_for(record, columns))
       end
 
       def mcp_primary_key_columns
@@ -205,78 +206,14 @@ module ActiveScaffold
         end
       end
 
-      def mcp_record_hash(record, columns)
+      def association_counts_for(record, columns)
         columns.each_with_object({}) do |column, result|
-          column_name = column.name
-          next unless record.authorized_for?(crud_type: :read, column: column_name)
+          cached_counts = @counts&.dig(column.name)
+          next unless cached_counts
 
-          result[column_name] = mcp_column_value(record, column)
+          key = column.association.primary_key if count_on_association_class?(column)
+          result[column.name] = cached_counts[record.public_send(key || :id)] || 0
         end
-      end
-
-      def mcp_column_value(record, column)
-        column_method = mcp_column_method_name(column)
-        return send(column_method, record, column) if respond_to?(column_method, true)
-        return mcp_association_value(record, record.public_send(column.association.name), column) if column.association
-
-        record.public_send(column.name)
-      end
-
-      def mcp_association_value(record, value, column)
-        if column.association.collection?
-          mcp_collection_association_value(record, value, column)
-        elsif value
-          mcp_associated_record_hash(value, polymorphic: column.association.polymorphic?)
-        end
-      end
-
-      def mcp_collection_association_value(record, value, column)
-        associated_limit = column.associated_limit
-        associated_number = column.associated_number?
-
-        if associated_limit.nil?
-          return value.map { |associated_record| mcp_associated_record_hash(associated_record) }
-        end
-
-        count = mcp_association_size(record, value, column) if associated_number
-        return associated_number ? count : nil if associated_limit.zero?
-
-        loaded_limit = associated_number ? associated_limit : associated_limit + 1
-        associated_records = mcp_limited_associated_records(value, loaded_limit)
-        more_records = associated_number ? count > associated_limit : associated_records.size > associated_limit
-        associated_records = associated_records.first(associated_limit)
-        records = associated_records.map { |associated_record| mcp_associated_record_hash(associated_record) }
-        displayed_count = if associated_number
-                            count
-                          elsif more_records
-                            ">#{associated_limit}"
-                          else
-                            records.size
-                          end
-
-        {
-          (more_records ? :first_records : :records) => records,
-          count: displayed_count
-        }
-      end
-
-      def mcp_limited_associated_records(value, limit)
-        if value.respond_to?(:loaded?) && value.loaded?
-          value.first(limit)
-        elsif value.respond_to?(:limit)
-          value.limit(limit).to_a
-        else
-          value.first(limit)
-        end
-      end
-
-      def mcp_association_size(record, value, column)
-        cached_counts = @counts&.dig(column.name)
-        return value.size unless cached_counts
-
-        key = column.association.primary_key if count_on_association_class?(column)
-        cached_counts[record.public_send(key || :id)] || 0
-      end
 
       def mcp_associated_record_hash(record, polymorphic: false)
         result = {id: record.id, label: record.to_label}

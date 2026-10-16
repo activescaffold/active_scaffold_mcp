@@ -16,6 +16,7 @@ module ActiveScaffold
           tool_class.active_scaffold_controller_class = controller_class
           tool_class.mcp_action_name = action_name
           tool_class.mcp_output_column_names = settings[:columns]&.map(&:to_sym)
+          tool_class.mcp_presenter_class = build_presenter_class(settings)
           tool_class.tool_name(settings[:name] || default_tool_name(action_name, mcp_config))
           tool_class.title("#{action_name.to_s.humanize} #{tool_resource_label(mcp_config, settings)}")
         end
@@ -34,6 +35,16 @@ module ActiveScaffold
 
         def include_extensions(tool_class, settings)
           Array(settings[:modules]).each { |extension| tool_class.include extension }
+        end
+
+        def build_presenter_class(settings)
+          presenter_class = settings[:presenter] || ActiveScaffold::MCP::Presenter
+          presenter_modules = Array(settings[:presenter_modules])
+          return presenter_class if presenter_modules.empty?
+
+          Class.new(presenter_class).tap do |configured_class|
+            presenter_modules.each { |extension| configured_class.include extension }
+          end
         end
 
         def singular_label(mcp_config)

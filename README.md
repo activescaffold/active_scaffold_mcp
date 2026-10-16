@@ -154,6 +154,45 @@ can override hooks such as `list_authorized?`, `beginning_of_chain`,
 `conditions_for_collection`, and named-filter security methods. Keep HTTP-only
 methods out of shared modules.
 
+Record serialization is handled by `ActiveScaffold::MCP::Presenter`, separately
+from the ActiveScaffold action modules included by the generated tool. A custom
+presenter class may replace it for an action:
+
+```ruby
+class TicketMCPPresenter < ActiveScaffold::MCP::Presenter
+  # Override presentable_column?, record, or the protected presentation helpers.
+end
+
+config.mcp.expose :show, presenter: TicketMCPPresenter
+```
+
+A replacement which does not subclass the default presenter must accept the
+tool in `initialize`, implement `presentable_column?`, and implement
+`record(record, columns, association_counts)`. The presenter exposes its tool
+and delegates `active_scaffold_config`, `params`, and `current_user` to it for
+presentation which depends on the current invocation. Subclassing the default
+presenter is recommended when only part of the standard serialization behavior
+needs to change.
+
+Use `presenter_modules` for action-specific presentation behavior without
+creating a presenter subclass:
+
+```ruby
+module TicketMCPPresentation
+  def summary_column(record, _column)
+    record.summary.to_s.strip
+  end
+end
+
+config.mcp.expose :list, presenter_modules: TicketMCPPresentation
+config.mcp.expose :show, presenter_modules: TicketMCPPresentation
+```
+
+Each generated action gets its own anonymous presenter subclass when presenter
+modules are configured, so the modules do not modify the base presenter or
+other MCP tools. `modules` extends the tool's query and authorization behavior;
+`presenter_modules` extends only record presentation.
+
 Default filter-column sets can be configured globally:
 
 ```ruby
@@ -398,10 +437,16 @@ included as JSON `null`; omission is reserved for columns which are neither
 associations nor readable from the record without arguments.
 
 If an MCP tool needs a value which requires arguments or currently exists only
-as HTML presentation logic, add a module to the MCP action and define
+as HTML presentation logic, add a presenter module to the MCP action and define
 `<column>_column(record, column)`, following the same naming convention as an
 ActiveScaffold column helper. The method should return presentation-independent
-data rather than HTML. Select the column for MCP output as usual.
+data rather than HTML. Select the column for MCP output as usual:
+
+```ruby
+config.mcp.expose :show,
+                  columns: %i[id status_badge],
+                  presenter_modules: DeviceMCPPresentation
+```
 
 The result includes the records and ActiveScaffold's pagination metadata. The
 total reuses the count already calculated by ActiveScaffold rather than issuing

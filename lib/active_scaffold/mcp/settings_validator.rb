@@ -6,7 +6,7 @@ module ActiveScaffold
       class InvalidSetting < ArgumentError; end
 
       COLUMN_SETTING = %i[columns].freeze
-      COMMON_SETTINGS = %i[description label modules name].freeze
+      COMMON_SETTINGS = %i[description label modules name presenter presenter_modules].freeze
       LIST_SETTINGS = %i[columns filter_columns filter_column_sets filters search].freeze
       SHOW_SETTINGS = %i[columns lookup_columns].freeze
 
@@ -36,8 +36,10 @@ module ActiveScaffold
         case setting
         when :description, :label, :name
           (value.is_a?(String) || value.is_a?(Symbol)) && value.to_s.present?
-        when :modules
+        when :modules, :presenter_modules
           Array(value).all? { |extension| extension.is_a?(Module) }
+        when :presenter
+          value.is_a?(Class)
         end
       end
 

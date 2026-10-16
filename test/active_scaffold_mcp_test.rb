@@ -286,6 +286,24 @@ class ActiveScaffoldMCPTest < Minitest::Test
     end
   end
 
+  def test_presenter_and_presenter_modules_are_validated_and_normalized
+    presenter_class = Class.new(ActiveScaffold::MCP::Presenter)
+    presenter_extension = Module.new
+    core = Struct.new(:model_id).new(:customers)
+    config = ActiveScaffold::Config::MCP.new(core)
+
+    config.expose :list, presenter: presenter_class, presenter_modules: presenter_extension
+
+    assert_same presenter_class, config.settings_for(:list)[:presenter]
+    assert_equal [presenter_extension], config.settings_for(:list)[:presenter_modules]
+    assert_raises(ActiveScaffold::MCP::SettingsValidator::InvalidSetting) do
+      config.list.presenter = Object.new
+    end
+    assert_raises(ActiveScaffold::MCP::SettingsValidator::InvalidSetting) do
+      config.list.presenter_modules = [presenter_extension, Object.new]
+    end
+  end
+
   def test_tool_name_and_label_are_common_settings
     core = Struct.new(:model_id).new(:customers)
     config = ActiveScaffold::Config::MCP.new(core)
@@ -1290,7 +1308,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal %i[optional splat], tool.send(:mcp_output_columns).map(&:name)
   end
 
-  def test_output_columns_include_an_action_module_column_method
+  def test_output_columns_include_a_presenter_module_column_method
     extension = Module.new do
       def required_column(record, _column)
         record.required("overridden")
@@ -1309,7 +1327,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     model.define_singleton_method(:authorized_for?) { |_options| true }
     model.define_singleton_method(:primary_key) { nil }
     config = Struct.new(:model, :columns).new(model, {required: column})
-    tool_class = build_list_tool_class(modules: [extension])
+    tool_class = build_list_tool_class(presenter_modules: [extension])
     tool = tool_class.new
     tool.define_singleton_method(:active_scaffold_config) { config }
     tool.define_singleton_method(:mcp_default_output_columns) { [column] }
@@ -1317,6 +1335,80 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     assert_equal [column], tool.send(:mcp_output_columns)
     assert_equal({required: "overridden"}, tool.send(:mcp_record_hash, record, [column]))
+  end
+
+  def test_presenter_does_not_dispatch_column_methods_to_active_scaffold_actions
+    column = Struct.new(:name, :association).new(:parent, nil)
+    model = Struct.new(:parent) do
+      def authorized_for?(_options)
+        true
+      end
+    end
+    model.define_singleton_method(:authorized_for?) { |_options| true }
+    model.define_singleton_method(:primary_key) { nil }
+    config = Struct.new(:model, :columns).new(model, {parent: column})
+    tool = build_list_tool_class.new
+    tool.define_singleton_method(:active_scaffold_config) { config }
+    tool.define_singleton_method(:mcp_default_output_columns) { [column] }
+
+    assert tool.respond_to?(:parent_column, true)
+    assert_equal({parent: "Top level"}, tool.send(:mcp_record_hash, model.new("Top level"), [column]))
+  end
+
+  def test_tool_can_use_a_custom_presenter_class
+    presenter_class = Class.new do
+      attr_reader :tool
+
+      def initialize(tool)
+        @tool = tool
+      end
+
+      def presentable_column?(_column)
+        true
+      end
+
+      def record(record, columns, counts = nil)
+        {value: record, columns: columns, counts: counts}
+      end
+    end
+    association = Struct.new(:primary_key).new(:account_id)
+    column = Struct.new(:name, :association).new(:tags, association)
+    model = Struct.new(:primary_key).new(nil)
+    model.define_singleton_method(:authorized_for?) { |_options| true }
+    config = Struct.new(:model, :columns).new(model, {tags: column})
+    record = Struct.new(:account_id) do
+      def authorized_for?(_options)
+        true
+      end
+    end.new(1)
+    tool = build_list_tool_class(presenter: presenter_class).new
+    tool.define_singleton_method(:active_scaffold_config) { config }
+    tool.define_singleton_method(:mcp_default_output_columns) { [column] }
+    tool.define_singleton_method(:count_on_association_class?) { |_column| true }
+
+    assert_instance_of presenter_class, tool.mcp_presenter
+    assert_equal [column], tool.send(:mcp_output_columns)
+    tool.instance_variable_set(:@counts, {tags: {1 => 2}})
+    assert_equal(
+      {value: record, columns: [column], counts: {tags: 2}},
+      tool.send(:mcp_record_hash, record, [column])
+    )
+  end
+
+  def test_presenter_modules_extend_a_configured_presenter_in_an_action_specific_subclass
+    presenter_class = Class.new(ActiveScaffold::MCP::Presenter)
+    extension = Module.new do
+      def marker
+        :extended
+      end
+    end
+    first_tool_class = build_list_tool_class(presenter: presenter_class, presenter_modules: extension)
+    second_tool_class = build_list_tool_class(presenter: presenter_class)
+
+    assert_operator first_tool_class.mcp_presenter_class, :<, presenter_class
+    assert_equal :extended, first_tool_class.new.mcp_presenter.marker
+    assert_same presenter_class, second_tool_class.mcp_presenter_class
+    refute_respond_to second_tool_class.new.mcp_presenter, :marker
   end
 
   def test_list_tool_serializes_singular_and_collection_associations_as_id_and_label

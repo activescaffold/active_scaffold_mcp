@@ -17,6 +17,7 @@ module ActiveScaffold
     autoload :Flash, "active_scaffold/mcp/flash"
     autoload :GeneratorFactory, "active_scaffold/mcp/generator_factory"
     autoload :ListToolGenerator, "active_scaffold/mcp/list_tool_generator"
+    autoload :Presenter, "active_scaffold/mcp/presenter"
     autoload :ProfileUser, "active_scaffold/mcp/profile_user"
     autoload :SettingsValidator, "active_scaffold/mcp/settings_validator"
     autoload :Tool, "active_scaffold/mcp/tool"

@@ -126,8 +126,10 @@ module ActiveScaffold
                              normalize_filter_column_sets(value)
                            when :filters
                              all?(value) ? :all : normalize_names(value)
-                           when :modules
+                           when :modules, :presenter_modules
                              Array(value).compact
+                           when :presenter
+                             value
                            else
                              duplicate_setting(value)
                            end
@@ -142,7 +144,14 @@ module ActiveScaffold
 
         def duplicate_settings(settings)
           settings.each_with_object({}) do |(name, value), result|
-            result[name] = name.to_sym == :modules ? Array(value).dup : duplicate_setting(value)
+            result[name] = case name.to_sym
+                           when :modules, :presenter_modules
+                             Array(value).dup
+                           when :presenter
+                             value
+                           else
+                             duplicate_setting(value)
+                           end
           end
         end
 
