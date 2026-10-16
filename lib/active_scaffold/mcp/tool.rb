@@ -214,6 +214,7 @@ module ActiveScaffold
           key = column.association.primary_key if count_on_association_class?(column)
           result[column.name] = cached_counts[record.public_send(key || :id)] || 0
         end
+      end
 
       def mcp_associated_record_hash(record, polymorphic: false)
         result = {id: record.id, label: record.to_label}
