@@ -4,6 +4,19 @@
 
 The gem is under initial development. The first implementation will provide a configuration DSL, a generated-tool registry, and read-only list and show tools.
 
+## Requirements
+
+- Ruby 3.4 or newer
+- Rails 8.1 or newer
+- Active Scaffold 4.4 or newer
+- ActionMCP 0.200 or newer
+
+Add the gem to your application:
+
+```ruby
+gem "active_scaffold_mcp", "~> 0.1.1"
+```
+
 Association columns use ActiveScaffold's list settings in MCP results. An
 unlimited collection (`associated_limit = nil`) is returned as an array. A
 positive limit returns `{records: [...], count: N}` when the complete

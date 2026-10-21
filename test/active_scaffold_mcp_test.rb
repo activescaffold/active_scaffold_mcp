@@ -140,6 +140,10 @@ class ActiveScaffoldMCPTest < Minitest::Test
       self.mcp_action_name = :list
       tool_name "denied_active_scaffold_list_tool"
 
+      def tool_authorized?
+        true
+      end
+
       def perform
         params[:config_list_view] = "Quick List"
         raise ActiveScaffold::ActionNotAllowed
