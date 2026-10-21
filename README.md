@@ -297,8 +297,7 @@ the original task runs. The class may be namespaced and must respond to `find`;
 the gem does not assume a particular user class or persistence library:
 
 ```sh
-READONLY=1 RAILS_ENV=production MCP_USER='User#123' \
-  bin/rails 'action_mcp:show_profile[primary]'
+MCP_USER='User#123' bin/rails 'action_mcp:show_profile[primary]'
 ```
 
 For a namespaced class, use a value such as
@@ -309,7 +308,7 @@ The full accepted arguments are in each tool's `inputSchema`. ActionMCP can
 print all registered schemas as JSON:
 
 ```sh
-READONLY=1 RAILS_ENV=production bin/rails action_mcp:apps:schema |
+bin/rails action_mcp:apps:schema |
   jq '.tools[] | select(.name == "list_support_tickets")'
 ```
 
