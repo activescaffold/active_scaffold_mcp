@@ -29,6 +29,12 @@ module ActiveScaffold
         do_list
         return if report_disallowed_filters
 
+        render_result
+      end
+
+      protected
+
+      def render_result
         columns = mcp_output_columns
         render(text: JSON.generate(
           records: @records.map { |record| mcp_record_hash(record, columns) },

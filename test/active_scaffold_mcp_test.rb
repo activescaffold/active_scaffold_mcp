@@ -747,6 +747,21 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal({"record" => {"name" => "Widget 7"}}, rendered)
   end
 
+  def test_show_tool_allows_a_configured_module_to_override_result_rendering
+    record = Object.new
+    rendered_record = nil
+    extension = Module.new do
+      define_method(:render_result) { rendered_record = @record }
+    end
+    tool = build_show_tool_class(modules: [extension]).new(id: 7)
+    tool.define_singleton_method(:do_show) { @record = record }
+    tool.define_singleton_method(:render) { flunk "default rendering must be replaceable" }
+
+    tool.perform
+
+    assert_same record, rendered_record
+  end
+
   def test_show_tool_flattens_grouped_output_columns
     column = Struct.new(:name, :association).new(:name, nil)
     action_columns = Object.new
@@ -1150,6 +1165,21 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal 2, rendered.fetch("page")
     assert_equal 57, rendered.fetch("total_count")
     assert_equal 3, rendered.fetch("total_pages")
+  end
+
+  def test_list_tool_allows_a_configured_module_to_override_result_rendering
+    records = [Object.new]
+    rendered_records = nil
+    extension = Module.new do
+      define_method(:render_result) { rendered_records = @records }
+    end
+    tool = build_list_tool_class(modules: [extension]).new
+    tool.define_singleton_method(:do_list) { @records = records }
+    tool.define_singleton_method(:render) { flunk "default rendering must be replaceable" }
+
+    tool.perform
+
+    assert_same records, rendered_records
   end
 
   def test_list_tool_reports_requested_filters_disallowed_by_active_scaffold

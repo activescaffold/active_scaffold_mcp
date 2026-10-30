@@ -16,9 +16,15 @@ module ActiveScaffold
         return unless resolve_lookup_id
 
         do_show
-        render(text: JSON.generate(record: mcp_record_hash(@record, mcp_output_columns)))
+        render_result
       rescue ActiveRecord::RecordNotFound
         report_error("No record found for id #{params[:id].inspect}")
+      end
+
+      protected
+
+      def render_result
+        render(text: JSON.generate(record: mcp_record_hash(@record, mcp_output_columns)))
       end
 
       private

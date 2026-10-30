@@ -167,6 +167,22 @@ can override hooks such as `list_authorized?`, `beginning_of_chain`,
 `conditions_for_collection`, and named-filter security methods. Keep HTTP-only
 methods out of shared modules.
 
+List and show tools delegate their default JSON response to the protected
+`render_result` hook after records have been loaded and validated. Override it
+in an action's configured `modules` when the tool needs to emit different MCP
+content while preserving the generated action's lookup, filtering,
+authorization, and error handling:
+
+```ruby
+module AttachmentMCPResult
+  def render_result
+    render(image: encoded_attachment(@record), mime_type: @record.file.type)
+  end
+end
+
+config.mcp.expose :show, modules: AttachmentMCPResult
+```
+
 Record serialization is handled by `ActiveScaffold::MCP::Presenter`, separately
 from the ActiveScaffold action modules included by the generated tool. A custom
 presenter class may replace it for an action:
