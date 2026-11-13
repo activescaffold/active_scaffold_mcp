@@ -1,9 +1,11 @@
 # frozen_string_literal: true
 
-require "test_helper"
-require "active_support/core_ext/module/attribute_accessors_per_thread"
+require 'test_helper'
+require 'active_support/core_ext/module/attribute_accessors_per_thread'
 
 class ActiveScaffoldMCPTest < Minitest::Test
+  Pager = Data.define(:count, :number_of_pages)
+
   def test_has_a_version
     refute_nil ActiveScaffold::MCP::VERSION
   end
@@ -19,8 +21,8 @@ class ActiveScaffoldMCPTest < Minitest::Test
     tool.send(:successful=, false)
     refute tool.send(:successful?)
 
-    tool.flash[:warning] = "Check this record"
-    assert_equal ["Check this record"], tool.flash.messages
+    tool.flash[:warning] = 'Check this record'
+    assert_equal ['Check this record'], tool.flash.messages
   end
 
   def test_base_tool_uses_top_level_action_controller_parameters
@@ -50,28 +52,28 @@ class ActiveScaffoldMCPTest < Minitest::Test
     user = Object.new
     user_class = Class.new do
       define_singleton_method(:find) do |id|
-        raise "unexpected id" unless id == "201"
+        raise 'unexpected id' unless id == '201'
 
         user
       end
     end
     Object.const_set(:MCPTestUser, user_class)
 
-    assert_same user, ActiveScaffold::MCP::ProfileUser.resolve("MCPTestUser#201")
+    assert_same user, ActiveScaffold::MCP::ProfileUser.resolve('MCPTestUser#201')
   ensure
     Object.send(:remove_const, :MCPTestUser) if Object.const_defined?(:MCPTestUser, false)
   end
 
   def test_profile_user_rejects_invalid_references
     error = assert_raises(ActiveScaffold::MCP::ProfileUser::InvalidReference) do
-      ActiveScaffold::MCP::ProfileUser.resolve("User")
+      ActiveScaffold::MCP::ProfileUser.resolve('User')
     end
-    assert_includes error.message, "CLASS#ID"
+    assert_includes error.message, 'CLASS#ID'
 
     error = assert_raises(ActiveScaffold::MCP::ProfileUser::InvalidReference) do
-      ActiveScaffold::MCP::ProfileUser.resolve("MissingMCPUser#201")
+      ActiveScaffold::MCP::ProfileUser.resolve('MissingMCPUser#201')
     end
-    assert_includes error.message, "class does not exist"
+    assert_includes error.message, 'class does not exist'
   end
 
   def test_base_tool_allows_missing_base_tool_authorization_hook
@@ -90,24 +92,24 @@ class ActiveScaffoldMCPTest < Minitest::Test
     logger.define_singleton_method(:error) { |message| logged << message }
     notified = nil
     tool_class = Class.new(ActiveScaffold::MCP::Tool) do
-      tool_name "failing_active_scaffold_tool"
+      tool_name 'failing_active_scaffold_tool'
     end
     tool_class.abstract!
     tool = tool_class.new
-    tool.instance_variable_set(:@_wire_arguments, {"case_number" => "S0000007", "token" => "secret"})
+    tool.instance_variable_set(:@_wire_arguments, {'case_number' => 'S0000007', 'token' => 'secret'})
     tool.define_singleton_method(:notify_active_scaffold_exception) { |exception| notified = exception }
-    exception = RuntimeError.new("visible in the server log")
+    exception = RuntimeError.new('visible in the server log')
     exception.set_backtrace(["list_tool.rb:10:in 'perform'"])
 
     Rails.logger = logger
     tool.send(:report_active_scaffold_exception, exception)
 
-    assert_equal "visible in the server log", notified.message
-    assert_includes logged.join("\n"), "failing_active_scaffold_tool failed"
+    assert_equal 'visible in the server log', notified.message
+    assert_includes logged.join("\n"), 'failing_active_scaffold_tool failed'
     assert_includes logged.join("\n"), '"case_number" => "S0000007"'
     assert_includes logged.join("\n"), '"token" => "[FILTERED]"'
-    refute_includes logged.join("\n"), "secret"
-    assert_includes logged.join("\n"), "visible in the server log"
+    refute_includes logged.join("\n"), 'secret'
+    assert_includes logged.join("\n"), 'visible in the server log'
   ensure
     Rails.logger = previous_logger
     Rails.define_singleton_method(:application) { previous_application }
@@ -117,7 +119,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     notified = false
     tool_class = Class.new(ActiveScaffold::MCP::Tool) do
       self.mcp_action_name = :update
-      tool_name "denied_active_scaffold_tool"
+      tool_name 'denied_active_scaffold_tool'
 
       def perform
         raise ActiveScaffold::ActionNotAllowed
@@ -131,21 +133,21 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert response.error?
     assert_equal true, response.to_h[:isError]
     assert_includes response.to_h.dig(:content, 0, :text),
-                    "The requested update action is not allowed for the current user or request context."
+                    'The requested update action is not allowed for the current user or request context.'
     refute notified
   end
 
   def test_list_tool_reports_selected_list_view_not_allowed_to_mcp
     tool_class = Class.new(ActiveScaffold::MCP::ListTool) do
       self.mcp_action_name = :list
-      tool_name "denied_active_scaffold_list_tool"
+      tool_name 'denied_active_scaffold_list_tool'
 
       def tool_authorized?
         true
       end
 
       def perform
-        params[:config_list_view] = "Quick List"
+        params[:config_list_view] = 'Quick List'
         raise ActiveScaffold::ActionNotAllowed
       end
     end
@@ -225,7 +227,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
   end
 
   def test_mcp_action_config_is_resolved_by_active_scaffold
-    assert_equal "MCP", "mcp".camelize
+    assert_equal 'MCP', 'mcp'.camelize
     assert_operator ActiveScaffold::Config::MCP, :<, ActiveScaffold::Config::Base
     assert_same ActiveScaffold::Config::MCP, ActiveScaffold::Config::Core.config_class(:mcp)
   end
@@ -257,24 +259,24 @@ class ActiveScaffoldMCPTest < Minitest::Test
   end
 
   def test_mcp_config_inherits_resource_name_and_plural_label_from_core
-    model_name = Struct.new(:route_key).new("desk_cases")
+    model_name = Struct.new(:route_key).new('desk_cases')
     core = Struct.new(:model_id, :model) do
       def label(options)
-        raise "expected plural label" unless options == {count: 2}
+        raise 'expected plural label' unless options == {count: 2}
 
-        "Desk cases"
+        'Desk cases'
       end
     end.new(:desk_cases, Struct.new(:model_name).new(model_name))
     config = ActiveScaffold::Config::MCP.new(core)
 
-    assert_equal "desk_cases", config.name
-    assert_equal "Desk cases", config.label
+    assert_equal 'desk_cases', config.name
+    assert_equal 'Desk cases', config.label
 
     config.name = :tickets
-    config.label = "Support tickets"
+    config.label = 'Support tickets'
 
-    assert_equal "tickets", config.name
-    assert_equal "Support tickets", config.label
+    assert_equal 'tickets', config.name
+    assert_equal 'Support tickets', config.label
   end
 
   def test_action_modules_are_validated_and_normalized
@@ -315,13 +317,13 @@ class ActiveScaffoldMCPTest < Minitest::Test
     config.expose :list,
                   name: :list_tickets,
                   label: :Tickets,
-                  description: :"Search the support ticket queue"
+                  description: :'Search the support ticket queue'
 
-    assert_equal "list_tickets", config.list.name
-    assert_equal "Tickets", config.list.label
-    assert_equal "Search the support ticket queue", config.list.description
+    assert_equal 'list_tickets', config.list.name
+    assert_equal 'Tickets', config.list.label
+    assert_equal 'Search the support ticket queue', config.list.description
     assert_raises(ActiveScaffold::MCP::SettingsValidator::InvalidSetting) do
-      config.show.name = ""
+      config.show.name = ''
     end
   end
 
@@ -382,14 +384,14 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     returned_config = config.expose :sepa_mandate do |action|
       action.columns = %i[account creditor_identifier]
-      action.description = "Create a SEPA mandate"
+      action.description = 'Create a SEPA mandate'
     end
 
     assert_instance_of ActiveScaffold::MCP::ActionConfig, returned_config
     assert_equal :sepa_mandate, returned_config.action_name
     assert config.exposed?(:sepa_mandate)
     assert_equal %i[account creditor_identifier], config.actions.dig(:sepa_mandate, :columns)
-    assert_equal "Create a SEPA mandate", config.actions.dig(:sepa_mandate, :description)
+    assert_equal 'Create a SEPA mandate', config.actions.dig(:sepa_mandate, :description)
   end
 
   def test_expose_block_configures_common_action_defaults
@@ -473,8 +475,8 @@ class ActiveScaffoldMCPTest < Minitest::Test
       config.expose :list, filter_column_sets: %i[foreign_keys timestamps]
     end
 
-    assert_includes error.message, "filter_column_sets must be a hash"
-    assert_includes error.message, "{foreign_keys: :in, timestamps: :range}"
+    assert_includes error.message, 'filter_column_sets must be a hash'
+    assert_includes error.message, '{foreign_keys: :in, timestamps: :range}'
   end
 
   def test_defaults_block_and_class_action_dsl
@@ -554,7 +556,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
   def test_generator_factory_skips_exposed_actions_disabled_in_the_scaffold
     generator = Object.new
-    generator.define_singleton_method(:generate_tool_for) { |**| flunk "list generator must not be called" }
+    generator.define_singleton_method(:generate_tool_for) { |**| flunk 'list generator must not be called' }
     factory = ActiveScaffold::MCP::GeneratorFactory.new
     factory.register(generator, actions: :list)
     core = generator_factory_core(show: generator_factory_action_config(:read, %i[id name]))
@@ -589,33 +591,33 @@ class ActiveScaffoldMCPTest < Minitest::Test
   end
 
   def test_list_tool_generator_builds_filter_schema_and_active_scaffold_params
-    id_column = Struct.new(:name, :type).new("id", :integer)
-    customer_column = Struct.new(:name, :type).new("customer_id", :integer)
-    company_column = Struct.new(:name, :type).new("company_id", :integer)
-    company_type_column = Struct.new(:name, :type).new("company_type", :string)
-    created_column = Struct.new(:name, :type).new("created_at", :datetime)
+    id_column = Struct.new(:name, :type).new('id', :integer)
+    customer_column = Struct.new(:name, :type).new('customer_id', :integer)
+    company_column = Struct.new(:name, :type).new('company_id', :integer)
+    company_type_column = Struct.new(:name, :type).new('company_type', :string)
+    created_column = Struct.new(:name, :type).new('created_at', :datetime)
     model_name = Struct.new(:route_key) do
       def human(count:)
-        count == 2 ? "Widgets" : "Widget"
+        count == 2 ? 'Widgets' : 'Widget'
       end
-    end.new("widgets")
+    end.new('widgets')
     model = Struct.new(:model_name).new(model_name)
     reflection = Struct.new(:foreign_key, :foreign_type) do
       def polymorphic?
         true
       end
-    end.new("company_id", "company_type")
+    end.new('company_id', 'company_type')
     model.define_singleton_method(:reflect_on_all_associations) do |macro|
       macro == :belongs_to ? [reflection] : []
     end
     core = Struct.new(:model, :_columns_hash, :columns, :actions).new(
       model,
       {
-        "id" => id_column,
-        "customer_id" => customer_column,
-        "company_id" => company_column,
-        "company_type" => company_type_column,
-        "created_at" => created_column
+        'id' => id_column,
+        'customer_id' => customer_column,
+        'company_id' => company_column,
+        'company_type' => company_type_column,
+        'created_at' => created_column
       },
       [],
       [:list]
@@ -641,7 +643,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_operator tool_class, :<, ActiveScaffold::MCP::ListTool
     assert_same controller_class, tool_class.active_scaffold_controller_class
     assert_includes tool_class.ancestors, ActiveScaffold::Actions::List
-    assert_equal "list_widgets", tool_class.tool_name
+    assert_equal 'list_widgets', tool_class.tool_name
     assert_equal(
       %w[id id_in created_at_from created_at_to customer_id_in company_id_in company_type_in limit page],
       tool_class._schema_properties.keys
@@ -649,17 +651,17 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     tool = tool_class.new(
       id_in: [1, 2],
-      created_at_from: "2026-01-01T00:00:00Z",
-      created_at_to: "2026-01-31T23:59:59Z",
+      created_at_from: '2026-01-01T00:00:00Z',
+      created_at_to: '2026-01-31T23:59:59Z',
       customer_id_in: [3, 4],
       company_id_in: [5],
-      company_type_in: ["Customer"]
+      company_type_in: ['Customer']
     )
     assert_equal [1, 2], tool.params[:id]
-    assert_equal "2026-01-01T00:00:00Z..2026-01-31T23:59:59Z", tool.params[:created_at]
+    assert_equal '2026-01-01T00:00:00Z..2026-01-31T23:59:59Z', tool.params[:created_at]
     assert_equal [3, 4], tool.params[:customer_id]
     assert_equal [5], tool.params[:company_id]
-    assert_equal ["Customer"], tool.params[:company_type]
+    assert_equal ['Customer'], tool.params[:company_type]
   end
 
   def test_list_tool_generator_exposes_named_filter_without_an_extra_prefix
@@ -667,19 +669,19 @@ class ActiveScaffoldMCPTest < Minitest::Test
     filter.add(:not_closed)
     tool_class = build_list_tool_class(filters: :all, action_filters: [filter])
 
-    assert_includes tool_class._schema_properties.keys, "filter_status"
-    refute_includes tool_class._schema_properties.keys, "filter_filter_status"
-    assert_includes tool_class.description, "named list filters"
+    assert_includes tool_class._schema_properties.keys, 'filter_status'
+    refute_includes tool_class._schema_properties.keys, 'filter_filter_status'
+    assert_includes tool_class.description, 'named list filters'
     assert_equal(
       "Apply the filter_status list filter. When omitted, the server uses the default option 'not_closed'",
-      tool_class._schema_properties.dig("filter_status", :description)
+      tool_class._schema_properties.dig('filter_status', :description)
     )
-    assert_equal "not_closed", tool_class.new(filter_status: "not_closed").params[:filter_status]
+    assert_equal 'not_closed', tool_class.new(filter_status: 'not_closed').params[:filter_status]
   end
 
   def test_list_tool_generator_warns_when_named_filter_may_be_disallowed
     filter = ActiveScaffold::DataStructures::Filter.new(:filter_status, :select)
-    filter.description = "Choose which records to list"
+    filter.description = 'Choose which records to list'
     filter.add(:open)
     filter.add(:all, security_method: :all_allowed?)
 
@@ -687,16 +689,16 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     assert_equal(
       "Choose which records to list. When omitted, the server uses the default option 'open'. " \
-      "These options may be disallowed in the current context: all",
-      tool_class._schema_properties.dig("filter_status", :description)
+      'These options may be disallowed in the current context: all',
+      tool_class._schema_properties.dig('filter_status', :description)
     )
 
     filter.define_singleton_method(:security_method_set?) { true }
     tool_class = build_list_tool_class(filters: :all, action_filters: [filter])
     assert_equal(
       "Choose which records to list. When omitted, the server uses the default option 'open'. " \
-      "This filter may be disallowed in the current context",
-      tool_class._schema_properties.dig("filter_status", :description)
+      'This filter may be disallowed in the current context',
+      tool_class._schema_properties.dig('filter_status', :description)
     )
   end
 
@@ -705,15 +707,15 @@ class ActiveScaffoldMCPTest < Minitest::Test
     filter = Struct.new(:name, :description, :default_option, :options) do
       include Enumerable
 
-      def each(&block)
-        options.each(&block)
+      def each(&)
+        options.each(&)
       end
     end.new(:id, nil, :open, [option])
 
     error = assert_raises(ArgumentError) do
       build_list_tool_class(filter_columns: {id: :equal}, filters: :all, action_filters: [filter])
     end
-    assert_includes error.message, "conflicts with an MCP column filter"
+    assert_includes error.message, 'conflicts with an MCP column filter'
   end
 
   def test_show_tool_generator_builds_required_primary_key_schema_and_params
@@ -721,11 +723,11 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     assert_operator tool_class, :<, ActiveScaffold::MCP::ShowTool
     assert_includes tool_class.ancestors, ActiveScaffold::Actions::Show
-    assert_equal "show_widget", tool_class.tool_name
-    assert_equal "Show Widget", tool_class.title
+    assert_equal 'show_widget', tool_class.tool_name
+    assert_equal 'Show Widget', tool_class.title
     assert_equal %w[id], tool_class._schema_properties.keys
-    assert_equal ["id"], tool_class._required_properties
-    assert_equal "integer", tool_class._schema_properties.dig("id", :type)
+    assert_equal ['id'], tool_class._required_properties
+    assert_equal 'integer', tool_class._schema_properties.dig('id', :type)
     assert_equal 7, tool_class.new(id: 7).params[:id]
   end
 
@@ -735,7 +737,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
       def authorized_for?(_options)
         true
       end
-    end.new("Widget 7")
+    end.new('Widget 7')
     rendered = nil
     tool = build_show_tool_class.new(id: 7)
     tool.define_singleton_method(:do_show) { @record = record }
@@ -744,7 +746,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     tool.perform
 
-    assert_equal({"record" => {"name" => "Widget 7"}}, rendered)
+    assert_equal({'record' => {'name' => 'Widget 7'}}, rendered)
   end
 
   def test_show_tool_allows_a_configured_module_to_override_result_rendering
@@ -755,7 +757,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     end
     tool = build_show_tool_class(modules: [extension]).new(id: 7)
     tool.define_singleton_method(:do_show) { @record = record }
-    tool.define_singleton_method(:render) { flunk "default rendering must be replaceable" }
+    tool.define_singleton_method(:render) { flunk 'default rendering must be replaceable' }
 
     tool.perform
 
@@ -780,34 +782,45 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     assert_equal %w[id case_number], tool_class._schema_properties.keys
     assert_empty tool_class._required_properties
-    assert_includes tool_class.description, "by id or case number"
-    assert_includes tool_class.description, "exactly one of `id` or `case_number`"
-    assert_equal "Case number of the Widget to return", tool_class._schema_properties.dig("case_number", :description)
+    assert_includes tool_class.description, 'by id or case number'
+    assert_includes tool_class.description, 'exactly one of `id` or `case_number`'
+    assert_equal 'Case number of the Widget to return', tool_class._schema_properties.dig('case_number', :description)
     refute tool_class.new.valid?
-    refute tool_class.new(id: 7, case_number: "S0000007").valid?
-    assert tool_class.new(case_number: "S0000007").valid?
-    assert_equal "S0000007", tool_class.new(case_number: "S0000007").params[:case_number]
+    refute tool_class.new(id: 7, case_number: 'S0000007').valid?
+    assert tool_class.new(case_number: 'S0000007').valid?
+    assert_equal 'S0000007', tool_class.new(case_number: 'S0000007').params[:case_number]
   end
 
   def test_show_lookup_columns_use_shared_json_schema_types_and_formats
     tool_class = build_show_tool_class(lookup_columns: %i[active reported_at])
 
-    assert_equal "boolean", tool_class._schema_properties.dig("active", :type)
-    assert_equal "string", tool_class._schema_properties.dig("reported_at", :type)
-    assert_equal "date-time", tool_class._schema_properties.dig("reported_at", :format)
+    assert_equal 'boolean', tool_class._schema_properties.dig('active', :type)
+    assert_equal 'string', tool_class._schema_properties.dig('reported_at', :type)
+    assert_equal 'date-time', tool_class._schema_properties.dig('reported_at', :format)
   end
 
   def test_show_tool_resolves_lookup_column_to_primary_key
     where_arguments = []
     relation = Object.new
-    relation.define_singleton_method(:where) { |arguments| where_arguments << arguments; relation }
-    relation.define_singleton_method(:limit) { |value| raise "unexpected limit" unless value == 2; relation }
-    relation.define_singleton_method(:pluck) { |column| raise "unexpected primary key" unless column == :id; [7] }
+    relation.define_singleton_method(:where) do |arguments|
+      where_arguments << arguments
+      relation
+    end
+    relation.define_singleton_method(:limit) do |value|
+      raise 'unexpected limit' unless value == 2
+
+      relation
+    end
+    relation.define_singleton_method(:pluck) do |column|
+      raise 'unexpected primary key' unless column == :id
+
+      [7]
+    end
     resolved_id = nil
     rendered = nil
-    tool = build_show_tool_class(lookup_columns: %i[case_number]).new(case_number: "S0000007")
+    tool = build_show_tool_class(lookup_columns: %i[case_number]).new(case_number: 'S0000007')
     tool.define_singleton_method(:beginning_of_chain) { relation }
-    tool.define_singleton_method(:filtered_query) { flunk "lookup resolution must not apply list filters" }
+    tool.define_singleton_method(:filtered_query) { flunk 'lookup resolution must not apply list filters' }
     tool.define_singleton_method(:do_show) do
       resolved_id = params[:id]
       @record = Object.new
@@ -817,9 +830,9 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     tool.perform
 
-    assert_equal [{case_number: "S0000007"}], where_arguments
+    assert_equal [{case_number: 'S0000007'}], where_arguments
     assert_equal 7, resolved_id
-    assert_equal({"record" => {}}, rendered)
+    assert_equal({'record' => {}}, rendered)
   end
 
   def test_show_tool_reports_an_ambiguous_lookup_to_mcp
@@ -827,17 +840,17 @@ class ActiveScaffoldMCPTest < Minitest::Test
     relation.define_singleton_method(:where) { |_arguments| relation }
     relation.define_singleton_method(:limit) { |_value| relation }
     relation.define_singleton_method(:pluck) { |_column| [7, 8] }
-    tool = build_show_tool_class(lookup_columns: %i[case_number]).new(case_number: "duplicate")
+    tool = build_show_tool_class(lookup_columns: %i[case_number]).new(case_number: 'duplicate')
     tool.define_singleton_method(:beginning_of_chain) { relation }
-    tool.define_singleton_method(:do_show) { flunk "show must not run for an ambiguous lookup" }
+    tool.define_singleton_method(:do_show) { flunk 'show must not run for an ambiguous lookup' }
     tool.define_singleton_method(:with_active_scaffold_context) { |&block| block.call }
 
     response = tool.call
 
     assert response.error?
     assert_equal true, response.to_h[:isError]
-    assert_includes response.to_h.dig(:content, 0, :text), "More than one record found for case_number"
-    assert_includes response.to_h.dig(:content, 0, :text), "use id instead"
+    assert_includes response.to_h.dig(:content, 0, :text), 'More than one record found for case_number'
+    assert_includes response.to_h.dig(:content, 0, :text), 'use id instead'
   end
 
   def test_show_tool_reports_a_missing_lookup_to_mcp
@@ -845,16 +858,16 @@ class ActiveScaffoldMCPTest < Minitest::Test
     relation.define_singleton_method(:where) { |_arguments| relation }
     relation.define_singleton_method(:limit) { |_value| relation }
     relation.define_singleton_method(:pluck) { |_column| [] }
-    tool = build_show_tool_class(lookup_columns: %i[case_number]).new(case_number: "missing")
+    tool = build_show_tool_class(lookup_columns: %i[case_number]).new(case_number: 'missing')
     tool.define_singleton_method(:beginning_of_chain) { relation }
-    tool.define_singleton_method(:do_show) { flunk "show must not run for a missing lookup" }
+    tool.define_singleton_method(:do_show) { flunk 'show must not run for a missing lookup' }
     tool.define_singleton_method(:with_active_scaffold_context) { |&block| block.call }
 
     response = tool.call
 
     assert response.error?
     assert_equal true, response.to_h[:isError]
-    assert_includes response.to_h.dig(:content, 0, :text), "No record found for case_number"
+    assert_includes response.to_h.dig(:content, 0, :text), 'No record found for case_number'
   end
 
   def test_show_tool_reports_a_missing_id_to_mcp
@@ -866,7 +879,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     assert response.error?
     assert_equal true, response.to_h[:isError]
-    assert_includes response.to_h.dig(:content, 0, :text), "No record found for id 99"
+    assert_includes response.to_h.dig(:content, 0, :text), 'No record found for id 99'
   end
 
   def test_show_tool_applies_show_authorization
@@ -903,20 +916,20 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
       def set_default_sorting
         @set_default_sorting_called = true
-        @list_view_default_sorting_applied = true unless params[:sort].present?
+        @list_view_default_sorting_applied = true if params[:sort].blank?
       end
     end
     ActiveScaffold::Actions.const_set(:ConfigList, config_list_module)
     list_view_security = Module.new do
       def compact_view_authorized?
-        current_user.equal?(ActionMCP::Current.user) && params[:config_list_view] == "Compact"
+        current_user.equal?(ActionMCP::Current.user) && params[:config_list_view] == 'Compact'
       end
     end
 
     tool_class = build_list_tool_class(
       config_list_action: true,
-      named_views: ["Compact", "Billing"],
-      named_view_security_methods: {"Compact" => :compact_view_authorized?},
+      named_views: %w[Compact Billing],
+      named_view_security_methods: {'Compact' => :compact_view_authorized?},
       modules: [list_view_security]
     )
 
@@ -924,41 +937,41 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_operator tool_class.ancestors.index(config_list_module), :<,
                     tool_class.ancestors.index(ActiveScaffold::Actions::List)
     assert_equal [:config_list_column], tool_class.new.send(:mcp_default_output_columns)
-    assert_includes tool_class._schema_properties.keys, "list_view"
-    assert_includes tool_class._schema_properties.dig("list_view", :description),
-                    "Configured views: `Compact` and `Billing`"
-    assert_equal %w[Compact Billing], tool_class._schema_properties.dig("list_view", :enum)
+    assert_includes tool_class._schema_properties.keys, 'list_view'
+    assert_includes tool_class._schema_properties.dig('list_view', :description),
+                    'Configured views: `Compact` and `Billing`'
+    assert_equal %w[Compact Billing], tool_class._schema_properties.dig('list_view', :enum)
 
     saved_view_tools = build_list_tool_class(
       config_list_action: true,
-      named_views: ["Compact"],
+      named_views: ['Compact'],
       saved_list_views: true,
       sortable_columns: [:id]
     )
     assert_equal 2, saved_view_tools.size
     saved_views_tool_class, list_views_tool_class = saved_view_tools
-    assert_includes saved_views_tool_class._schema_properties.keys, "list_view"
-    assert_nil saved_views_tool_class._schema_properties.dig("list_view", :enum)
+    assert_includes saved_views_tool_class._schema_properties.keys, 'list_view'
+    assert_nil saved_views_tool_class._schema_properties.dig('list_view', :enum)
     assert_includes saved_views_tool_class.description,
-                    "Call `list_widgets_views` to get all views available to the current user"
-    assert_equal "list_widgets_views", list_views_tool_class.tool_name
-    assert_equal "List views for Widgets", list_views_tool_class.title
+                    'Call `list_widgets_views` to get all views available to the current user'
+    assert_equal 'list_widgets_views', list_views_tool_class.tool_name
+    assert_equal 'List views for Widgets', list_views_tool_class.title
 
     fixed_columns_tool_class = build_list_tool_class(
       config_list_action: true,
-      named_views: ["Compact"],
+      named_views: ['Compact'],
       columns: [:id]
     )
-    assert_includes fixed_columns_tool_class._schema_properties.keys, "list_view"
+    assert_includes fixed_columns_tool_class._schema_properties.keys, 'list_view'
     assert_equal [:id], fixed_columns_tool_class.new.send(:mcp_configured_output_column_names)
-    assert_nil fixed_columns_tool_class.new(list_view: "Compact").send(:mcp_configured_output_column_names)
+    assert_nil fixed_columns_tool_class.new(list_view: 'Compact').send(:mcp_configured_output_column_names)
 
-    tool = tool_class.new(list_view: "Compact")
-    assert_equal "Compact", tool.params[:config_list_view]
-    assert_equal ["Compact"], tool.send(:mcp_default_output_columns)
+    tool = tool_class.new(list_view: 'Compact')
+    assert_equal 'Compact', tool.params[:config_list_view]
+    assert_equal ['Compact'], tool.send(:mcp_default_output_columns)
     assert tool.send(:compact_view_authorized?)
 
-    pager = Struct.new(:count, :number_of_pages).new(0, 0)
+    pager = Pager.new(0, 0)
     page = Struct.new(:number, :pager).new(1, pager)
     tool.define_singleton_method(:do_list) do
       @page = page
@@ -970,7 +983,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert tool.instance_variable_get(:@set_default_sorting_called)
     assert tool.instance_variable_get(:@list_view_default_sorting_applied)
 
-    saved_view_with_sort = saved_views_tool_class.new(list_view: "My saved view", sort: "id", sort_direction: "desc")
+    saved_view_with_sort = saved_views_tool_class.new(list_view: 'My saved view', sort: 'id', sort_direction: 'desc')
     saved_view_with_sort.define_singleton_method(:do_list) do
       @page = page
       @records = []
@@ -979,21 +992,21 @@ class ActiveScaffoldMCPTest < Minitest::Test
     saved_view_with_sort.define_singleton_method(:render) { |text:| JSON.parse(text) }
     saved_view_with_sort.perform
 
-    assert_equal "My saved view", saved_view_with_sort.params[:config_list_view]
-    assert_equal "id", saved_view_with_sort.params[:sort]
-    assert_equal "desc", saved_view_with_sort.params[:sort_direction]
+    assert_equal 'My saved view', saved_view_with_sort.params[:config_list_view]
+    assert_equal 'id', saved_view_with_sort.params[:sort]
+    assert_equal 'desc', saved_view_with_sort.params[:sort_direction]
     refute saved_view_with_sort.instance_variable_get(:@list_view_default_sorting_applied)
-    assert_equal "widgets", saved_view_with_sort.send(:controller_name)
-    assert_equal "as:widgets", saved_view_with_sort.send(:active_scaffold_session_storage_key)
+    assert_equal 'widgets', saved_view_with_sort.send(:controller_name)
+    assert_equal 'as:widgets', saved_view_with_sort.send(:active_scaffold_session_storage_key)
 
     views_config = Struct.new(:named_views)
     active_config = Struct.new(:config_list).new(views_config.new(
-      [Struct.new(:name, :security_method, :tooltip).new("Compact", nil, "Fewer columns")]
-    ))
+                                                   [Struct.new(:name, :security_method, :tooltip).new('Compact', nil, 'Fewer columns')]
+                                                 ))
     list_views_tool = list_views_tool_class.new
     list_views_tool.define_singleton_method(:active_scaffold_config) { active_config }
     list_views_tool.define_singleton_method(:config_list_named_views) do
-      [["My saved view", "my-saved-view"], "Personal", ["Compact", "Compact"]]
+      [['My saved view', 'my-saved-view'], 'Personal', %w[Compact Compact]]
     end
     rendered_views = nil
     list_views_tool.define_singleton_method(:render) { |text:| rendered_views = JSON.parse(text) }
@@ -1002,40 +1015,40 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     assert_equal(
       [
-        {"label" => "Compact", "value" => "Compact", "source" => "configured", "description" => "Fewer columns"},
-        {"label" => "My saved view", "value" => "my-saved-view", "source" => "saved"},
-        {"label" => "Personal", "value" => "Personal", "source" => "saved"}
+        {'label' => 'Compact', 'value' => 'Compact', 'source' => 'configured', 'description' => 'Fewer columns'},
+        {'label' => 'My saved view', 'value' => 'my-saved-view', 'source' => 'saved'},
+        {'label' => 'Personal', 'value' => 'Personal', 'source' => 'saved'}
       ],
-      rendered_views.fetch("views")
+      rendered_views.fetch('views')
     )
   ensure
     if defined?(config_list_module) && ActiveScaffold::Actions.const_defined?(:ConfigList, false) &&
-        ActiveScaffold::Actions.const_get(:ConfigList, false).equal?(config_list_module)
+       ActiveScaffold::Actions.const_get(:ConfigList, false).equal?(config_list_module)
       ActiveScaffold::Actions.send(:remove_const, :ConfigList)
     end
   end
 
   def test_list_tool_generator_uses_configured_name_and_label
-    tool_class = build_list_tool_class(name: "list_tickets", label: "Support tickets")
+    tool_class = build_list_tool_class(name: 'list_tickets', label: 'Support tickets')
 
-    assert_equal "list_tickets", tool_class.tool_name
-    assert_equal "List Support tickets", tool_class.title
-    assert_equal "List Support tickets as a paginated collection. Use limit and page for pagination.", tool_class.description
-    assert_equal "List Support tickets", tool_class.to_h.dig(:annotations, "title")
+    assert_equal 'list_tickets', tool_class.tool_name
+    assert_equal 'List Support tickets', tool_class.title
+    assert_equal 'List Support tickets as a paginated collection. Use limit and page for pagination.', tool_class.description
+    assert_equal 'List Support tickets', tool_class.to_h.dig(:annotations, 'title')
   end
 
   def test_list_tool_generator_uses_mcp_resource_name_and_label
-    tool_class = build_list_tool_class(mcp_name: "tickets", mcp_label: "Support tickets")
+    tool_class = build_list_tool_class(mcp_name: 'tickets', mcp_label: 'Support tickets')
 
-    assert_equal "list_tickets", tool_class.tool_name
-    assert_equal "List Support tickets", tool_class.title
+    assert_equal 'list_tickets', tool_class.tool_name
+    assert_equal 'List Support tickets', tool_class.title
   end
 
   def test_list_tool_description_summarizes_supported_filter_arguments
     tool_class = build_list_tool_class(filter_columns: {id: :equal})
 
     assert_equal(
-      "List Widgets as a paginated collection. Supports column filters. Use limit and page for pagination.",
+      'List Widgets as a paginated collection. Supports column filters. Use limit and page for pagination.',
       tool_class.description
     )
   end
@@ -1044,15 +1057,15 @@ class ActiveScaffoldMCPTest < Minitest::Test
     tool_class = build_list_tool_class(search_action: true)
 
     assert_includes tool_class.ancestors, ActiveScaffold::Actions::Search
-    assert_equal "%?%", tool_class.like_pattern(:full)
-    assert_includes tool_class._schema_properties.keys, "search"
+    assert_equal '%?%', tool_class.like_pattern(:full)
+    assert_includes tool_class._schema_properties.keys, 'search'
     assert_equal(
-      "Search text across Case number and Summary",
-      tool_class._schema_properties.dig("search", :description)
+      'Search text across Case number and Summary',
+      tool_class._schema_properties.dig('search', :description)
     )
-    assert_equal "router", tool_class.new(search: "router").params[:search]
-    assert_includes tool_class.description, "full-text search"
-    assert_includes tool_class.description, "Search text across Case number and Summary"
+    assert_equal 'router', tool_class.new(search: 'router').params[:search]
+    assert_includes tool_class.description, 'full-text search'
+    assert_includes tool_class.description, 'Search text across Case number and Summary'
   end
 
   def test_list_tool_generator_adds_active_scaffold_sorting_for_non_output_virtual_columns
@@ -1062,23 +1075,23 @@ class ActiveScaffoldMCPTest < Minitest::Test
       default_sorting: {priority: :desc, id: :asc}
     )
 
-    assert_equal %w[id priority], tool_class._schema_properties.dig("sort", :enum)
-    assert_equal %w[asc desc], tool_class._schema_properties.dig("sort_direction", :enum)
-    assert_includes tool_class._schema_properties.dig("sort", :description),
-                    "Allowed columns: `id` and `priority`"
-    assert_includes tool_class._schema_properties.dig("sort", :description),
-                    "When sort is omitted, the ActiveScaffold default sorting is `priority` DESC and `id` ASC"
-    assert_includes tool_class.description, "Supports sorting by `id` and `priority`"
+    assert_equal %w[id priority], tool_class._schema_properties.dig('sort', :enum)
+    assert_equal %w[asc desc], tool_class._schema_properties.dig('sort_direction', :enum)
+    assert_includes tool_class._schema_properties.dig('sort', :description),
+                    'Allowed columns: `id` and `priority`'
+    assert_includes tool_class._schema_properties.dig('sort', :description),
+                    'When sort is omitted, the ActiveScaffold default sorting is `priority` DESC and `id` ASC'
+    assert_includes tool_class.description, 'Supports sorting by `id` and `priority`'
     assert_includes tool_class.description,
-                    "When sort is omitted, the ActiveScaffold default sorting is `priority` DESC and `id` ASC"
+                    'When sort is omitted, the ActiveScaffold default sorting is `priority` DESC and `id` ASC'
 
-    default_direction = tool_class.new(sort: "priority")
-    assert_equal "priority", default_direction.params[:sort]
-    assert_equal "asc", default_direction.params[:sort_direction]
+    default_direction = tool_class.new(sort: 'priority')
+    assert_equal 'priority', default_direction.params[:sort]
+    assert_equal 'asc', default_direction.params[:sort_direction]
 
-    descending = tool_class.new(sort: "id", sort_direction: "desc")
-    assert_equal "id", descending.params[:sort]
-    assert_equal "desc", descending.params[:sort_direction]
+    descending = tool_class.new(sort: 'id', sort_direction: 'desc')
+    assert_equal 'id', descending.params[:sort]
+    assert_equal 'desc', descending.params[:sort_direction]
 
     default_sorting = tool_class.new
     refute default_sorting.params.key?(:sort)
@@ -1089,14 +1102,14 @@ class ActiveScaffoldMCPTest < Minitest::Test
     tool_class = build_list_tool_class(search_action: true, search: false)
 
     refute_includes tool_class.ancestors, ActiveScaffold::Actions::Search
-    refute_includes tool_class._schema_properties.keys, "search"
+    refute_includes tool_class._schema_properties.keys, 'search'
   end
 
   def test_list_tool_prepares_search_before_listing_when_search_is_provided
-    pager = Struct.new(:count, :number_of_pages).new(0, 0)
+    pager = Pager.new(0, 0)
     page = Struct.new(:number, :pager).new(1, pager)
     calls = []
-    tool = build_list_tool_class(search_action: true).new(search: "router")
+    tool = build_list_tool_class(search_action: true).new(search: 'router')
     tool.define_singleton_method(:store_search_params_into_session) { calls << :store_search }
     tool.define_singleton_method(:do_search) { calls << :search }
     tool.define_singleton_method(:do_list) do
@@ -1113,42 +1126,42 @@ class ActiveScaffoldMCPTest < Minitest::Test
   end
 
   def test_list_tool_provides_active_scaffold_session_storage_for_search
-    tool = build_list_tool_class(search_action: true).new(search: "router")
+    tool = build_list_tool_class(search_action: true).new(search: 'router')
     config = Struct.new(:store_user_settings).new(true)
     tool.define_singleton_method(:active_scaffold_config) { config }
     tool.define_singleton_method(:session) { Object.new }
 
     tool.send(:store_search_params_into_session)
 
-    assert_equal "router", tool.send(:search_params)
+    assert_equal 'router', tool.send(:search_params)
     refute tool.params.key?(:search)
   end
 
   def test_list_tool_checks_search_authorization_only_for_a_search_call
     tool_class = build_list_tool_class(search_action: true)
-    search_tool = tool_class.new(search: "router")
+    search_tool = tool_class.new(search: 'router')
     search_tool.define_singleton_method(:list_authorized?) { true }
     search_tool.define_singleton_method(:search_authorized?) { false }
     refute search_tool.send(:tool_authorized?)
 
     list_tool = tool_class.new
     list_tool.define_singleton_method(:list_authorized?) { true }
-    list_tool.define_singleton_method(:search_authorized?) { flunk "search authorization must not be checked" }
+    list_tool.define_singleton_method(:search_authorized?) { flunk 'search authorization must not be checked' }
     assert list_tool.send(:tool_authorized?)
   end
 
   def test_list_tool_generator_uses_configured_description
     tool_class = build_list_tool_class(
-      label: "Tickets",
-      description: "Find support tickets using queue filters and pagination."
+      label: 'Tickets',
+      description: 'Find support tickets using queue filters and pagination.'
     )
 
-    assert_equal "List Tickets", tool_class.title
-    assert_equal "Find support tickets using queue filters and pagination.", tool_class.description
+    assert_equal 'List Tickets', tool_class.title
+    assert_equal 'Find support tickets using queue filters and pagination.', tool_class.description
   end
 
   def test_list_tool_returns_total_count_and_total_pages
-    pager = Struct.new(:count, :number_of_pages).new(57, 3)
+    pager = Pager.new(57, 3)
     page = Struct.new(:number, :pager).new(2, pager)
     rendered = nil
     tool = build_list_tool_class.new
@@ -1161,10 +1174,10 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     tool.perform
 
-    assert_equal [], rendered.fetch("records")
-    assert_equal 2, rendered.fetch("page")
-    assert_equal 57, rendered.fetch("total_count")
-    assert_equal 3, rendered.fetch("total_pages")
+    assert_equal [], rendered.fetch('records')
+    assert_equal 2, rendered.fetch('page')
+    assert_equal 57, rendered.fetch('total_count')
+    assert_equal 3, rendered.fetch('total_pages')
   end
 
   def test_list_tool_allows_a_configured_module_to_override_result_rendering
@@ -1175,7 +1188,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     end
     tool = build_list_tool_class(modules: [extension]).new
     tool.define_singleton_method(:do_list) { @records = records }
-    tool.define_singleton_method(:render) { flunk "default rendering must be replaceable" }
+    tool.define_singleton_method(:render) { flunk 'default rendering must be replaceable' }
 
     tool.perform
 
@@ -1188,8 +1201,8 @@ class ActiveScaffoldMCPTest < Minitest::Test
     used_filter = ActiveScaffold::DataStructures::Filter.new(:used_filter, :select)
     used_filter.add(:all)
     tool = build_list_tool_class(filters: :all, action_filters: [filter, used_filter]).new(
-      filter: "all",
-      used_filter: "all"
+      filter: 'all',
+      used_filter: 'all'
     )
     tool.define_singleton_method(:do_list) do
       @filter_states = {
@@ -1197,7 +1210,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
         used_filter: {option: used_filter[:all], status: :disallowed, default: true, requested: true}
       }
     end
-    tool.define_singleton_method(:mcp_output_columns) { flunk "disallowed results must not be serialized" }
+    tool.define_singleton_method(:mcp_output_columns) { flunk 'disallowed results must not be serialized' }
     tool.define_singleton_method(:with_active_scaffold_context) { |&block| block.call }
 
     response = tool.call
@@ -1205,10 +1218,10 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert response.error?
     assert_equal true, response.to_h[:isError]
     assert_includes response.to_h.dig(:content, 0, :text), '`used_filter="all"`'
-    assert_includes response.to_h.dig(:content, 0, :text), "No records were returned"
-    assert_includes response.to_h.dig(:content, 0, :text), "only `used_filter` omitted"
-    assert_includes response.to_h.dig(:content, 0, :text), "keep all other arguments unchanged"
-    assert_includes response.to_h.dig(:content, 0, :text), "may be allowed with different arguments"
+    assert_includes response.to_h.dig(:content, 0, :text), 'No records were returned'
+    assert_includes response.to_h.dig(:content, 0, :text), 'only `used_filter` omitted'
+    assert_includes response.to_h.dig(:content, 0, :text), 'keep all other arguments unchanged'
+    assert_includes response.to_h.dig(:content, 0, :text), 'may be allowed with different arguments'
   end
 
   def test_list_tool_reports_default_filter_disallowed_by_active_scaffold
@@ -1216,8 +1229,8 @@ class ActiveScaffoldMCPTest < Minitest::Test
     filter.add(:all)
     used_filter = ActiveScaffold::DataStructures::Filter.new(:used_filter, :select)
     used_filter.add(:used)
-    tool = build_list_tool_class(filters: :all, action_filters: [filter, used_filter]).new(filter: "all")
-    pager = Struct.new(:count, :number_of_pages).new(0, 0)
+    tool = build_list_tool_class(filters: :all, action_filters: [filter, used_filter]).new(filter: 'all')
+    pager = Pager.new(0, 0)
     page = Struct.new(:number, :pager).new(1, pager)
     rendered = nil
     tool.define_singleton_method(:do_list) do
@@ -1234,8 +1247,8 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     tool.perform
 
-    assert_equal [], rendered.fetch("records")
-    assert_equal 0, rendered.fetch("total_count")
+    assert_equal [], rendered.fetch('records')
+    assert_equal 0, rendered.fetch('total_count')
   end
 
   def test_list_tool_disables_controller_conditional_get_support
@@ -1266,10 +1279,10 @@ class ActiveScaffoldMCPTest < Minitest::Test
         options[:column] == :id
       end
 
-      def has_attribute?(name)
+      def has_attribute?(name) # rubocop:disable Naming/PredicatePrefix
         %i[id secret].include?(name.to_sym)
       end
-    end.new(1, "private")
+    end.new(1, 'private')
     assert_equal({id: 1}, tool.send(:mcp_record_hash, record, [id_column, secret_column]))
   end
 
@@ -1324,7 +1337,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
         value
       end
 
-      def optional(value = "optional")
+      def optional(value = 'optional')
         value
       end
 
@@ -1345,7 +1358,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
   def test_output_columns_include_a_presenter_module_column_method
     extension = Module.new do
       def required_column(record, _column)
-        record.required("overridden")
+        record.required('overridden')
       end
     end
     column = Struct.new(:name, :association).new(:required, nil)
@@ -1368,7 +1381,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     record = model.new
 
     assert_equal [column], tool.send(:mcp_output_columns)
-    assert_equal({required: "overridden"}, tool.send(:mcp_record_hash, record, [column]))
+    assert_equal({required: 'overridden'}, tool.send(:mcp_record_hash, record, [column]))
   end
 
   def test_presenter_does_not_dispatch_column_methods_to_active_scaffold_actions
@@ -1386,7 +1399,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     tool.define_singleton_method(:mcp_default_output_columns) { [column] }
 
     assert tool.respond_to?(:parent_column, true)
-    assert_equal({parent: "Top level"}, tool.send(:mcp_record_hash, model.new("Top level"), [column]))
+    assert_equal({parent: 'Top level'}, tool.send(:mcp_record_hash, model.new('Top level'), [column]))
   end
 
   def test_tool_can_use_a_custom_presenter_class
@@ -1457,8 +1470,8 @@ class ActiveScaffoldMCPTest < Minitest::Test
         label
       end
     end
-    customer = associated_record_class.new(7, "Acme")
-    tags = [associated_record_class.new(2, "Important"), associated_record_class.new(3, "Open")]
+    customer = associated_record_class.new(7, 'Acme')
+    tags = [associated_record_class.new(2, 'Important'), associated_record_class.new(3, 'Open')]
     record = Struct.new(:customer, :tags) do
       def authorized_for?(_options)
         true
@@ -1468,8 +1481,8 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     assert_equal(
       {
-        customer: {id: 7, label: "Acme"},
-        tags: [{id: 2, label: "Important"}, {id: 3, label: "Open"}]
+        customer: {id: 7, label: 'Acme'},
+        tags: [{id: 2, label: 'Important'}, {id: 3, label: 'Open'}]
       },
       tool.send(:mcp_record_hash, record, [singular_column, collection_column])
     )
@@ -1488,9 +1501,9 @@ class ActiveScaffoldMCPTest < Minitest::Test
       end
     end
     tags = [
-      associated_record_class.new(2, "Important"),
-      associated_record_class.new(3, "Open"),
-      associated_record_class.new(4, "Customer visible")
+      associated_record_class.new(2, 'Important'),
+      associated_record_class.new(3, 'Open'),
+      associated_record_class.new(4, 'Customer visible')
     ]
     record = Struct.new(:id, :tags) do
       def authorized_for?(_options)
@@ -1501,7 +1514,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal(
       {
         tags: {
-          first_records: [{id: 2, label: "Important"}, {id: 3, label: "Open"}],
+          first_records: [{id: 2, label: 'Important'}, {id: 3, label: 'Open'}],
           count: 3
         }
       },
@@ -1539,11 +1552,11 @@ class ActiveScaffoldMCPTest < Minitest::Test
     collection = Object.new
     collection.define_singleton_method(:loaded?) { false }
     collection.define_singleton_method(:limit) do |limit|
-      raise "unexpected limit" unless limit == 3
+      raise 'unexpected limit' unless limit == 3
 
       limited_relation
     end
-    collection.define_singleton_method(:map) { raise "the whole collection must not be loaded" }
+    collection.define_singleton_method(:map) { raise 'the whole collection must not be loaded' }
     record = Struct.new(:tags) do
       def authorized_for?(_options)
         true
@@ -1553,8 +1566,8 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal(
       {
         tags: {
-          first_records: [{id: 1, label: "Tag 1"}, {id: 2, label: "Tag 2"}],
-          count: ">2"
+          first_records: [{id: 1, label: 'Tag 1'}, {id: 2, label: 'Tag 2'}],
+          count: '>2'
         }
       },
       build_list_tool_class.new.send(:mcp_record_hash, record, [column])
@@ -1578,7 +1591,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal(
       {
         tags: {
-          records: [{id: 1, label: "Tag 1"}, {id: 2, label: "Tag 2"}],
+          records: [{id: 1, label: 'Tag 1'}, {id: 2, label: 'Tag 2'}],
           count: 2
         }
       },
@@ -1599,10 +1612,10 @@ class ActiveScaffoldMCPTest < Minitest::Test
       end
 
       def to_label
-        "Router 7"
+        'Router 7'
       end
     end
-    associated_record_class.define_singleton_method(:name) { "Router" }
+    associated_record_class.define_singleton_method(:name) { 'Router' }
     record = Struct.new(:record) do
       def authorized_for?(_options)
         true
@@ -1610,7 +1623,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     end.new(associated_record_class.new(7))
 
     assert_equal(
-      {record: {id: 7, label: "Router 7", model: "Router"}},
+      {record: {id: 7, label: 'Router 7', model: 'Router'}},
       build_list_tool_class.new.send(:mcp_record_hash, record, [column])
     )
   end
@@ -1647,9 +1660,9 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
     ActiveScaffold::MCP.generate_tools_for(controller, Object.new)
 
-    assert_includes ActiveScaffold::MCP.generated_controller_names, "MCPTrackedWidgetsController"
+    assert_includes ActiveScaffold::MCP.generated_controller_names, 'MCPTrackedWidgetsController'
   ensure
-    ActiveScaffold::MCP.generated_controller_names.delete("MCPTrackedWidgetsController")
+    ActiveScaffold::MCP.generated_controller_names.delete('MCPTrackedWidgetsController')
     ActiveScaffold::Config::MCP.tool_generator = previous_generator
     Object.send(:remove_const, :MCPTrackedWidgetsController) if Object.const_defined?(:MCPTrackedWidgetsController, false)
   end
@@ -1658,17 +1671,17 @@ class ActiveScaffoldMCPTest < Minitest::Test
     original_tools = ActionMCP::ToolsRegistry.items.dup
     stale_tool = Class.new(ActiveScaffold::MCP::Tool)
     manual_tool = Class.new(ActionMCP::Tool) do
-      tool_name "manual_reload_test"
+      tool_name 'manual_reload_test'
     end
     manual_active_scaffold_tool = Class.new(ActiveScaffold::MCP::Tool) do
-      tool_name "manual_active_scaffold_reload_test"
+      tool_name 'manual_active_scaffold_reload_test'
     end
     ActionMCP::ToolsRegistry.clear!
     ActionMCP::ToolsRegistry.register(manual_tool)
     ActionMCP::ToolsRegistry.register(manual_active_scaffold_tool)
-    ActionMCP::ToolsRegistry.items["stale"] = stale_tool
+    ActionMCP::ToolsRegistry.items['stale'] = stale_tool
     ActiveScaffold::MCP.generated_tool_classes << stale_tool
-    ActiveScaffold::MCP.generated_controller_names << "MCPReloadedWidgetsController"
+    ActiveScaffold::MCP.generated_controller_names << 'MCPReloadedWidgetsController'
 
     action_config = Object.new
     active_scaffold_config = Struct.new(:mcp).new(action_config)
@@ -1687,11 +1700,11 @@ class ActiveScaffoldMCPTest < Minitest::Test
     ActiveScaffold::MCP.reload_generated_tools!
 
     assert_equal [[current_controller, action_config]], calls
-    assert_same manual_tool, ActionMCP::ToolsRegistry.items["manual_reload_test"]
-    assert_same manual_active_scaffold_tool, ActionMCP::ToolsRegistry.items["manual_active_scaffold_reload_test"]
-    refute ActionMCP::ToolsRegistry.items.key?("stale")
+    assert_same manual_tool, ActionMCP::ToolsRegistry.items['manual_reload_test']
+    assert_same manual_active_scaffold_tool, ActionMCP::ToolsRegistry.items['manual_active_scaffold_reload_test']
+    refute ActionMCP::ToolsRegistry.items.key?('stale')
   ensure
-    ActiveScaffold::MCP.generated_controller_names.delete("MCPReloadedWidgetsController")
+    ActiveScaffold::MCP.generated_controller_names.delete('MCPReloadedWidgetsController')
     ActiveScaffold::MCP.generated_tool_classes.delete(stale_tool) if stale_tool
     ActiveScaffold::Config::MCP.tool_generator = previous_generator
     ActionMCP::ToolsRegistry.clear!
@@ -1701,7 +1714,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
   def test_configured_base_tool_is_resolved_from_a_class_name_or_callable
     previous_base = ActiveScaffold::Config::MCP.base_tool
-    ActiveScaffold::Config::MCP.base_tool = "ActionMCP::Tool"
+    ActiveScaffold::Config::MCP.base_tool = 'ActionMCP::Tool'
     assert_same ActionMCP::Tool, ActiveScaffold::Config::MCP.resolve_tool(:base)
 
     custom_base = Class.new(ActionMCP::Tool)
@@ -1725,39 +1738,39 @@ class ActiveScaffoldMCPTest < Minitest::Test
     saved_list_views = settings.delete(:saved_list_views)
     controller_class = settings.delete(:controller_class) || Class.new
     unless controller_class.respond_to?(:controller_name)
-      controller_class.define_singleton_method(:controller_name) { "widgets" }
+      controller_class.define_singleton_method(:controller_name) { 'widgets' }
     end
     unless controller_class.respond_to?(:controller_path)
-      controller_class.define_singleton_method(:controller_path) { "widgets" }
+      controller_class.define_singleton_method(:controller_path) { 'widgets' }
     end
     sortable_column_names = Array(settings.delete(:sortable_columns)).map(&:to_s)
     default_sorting = settings.delete(:default_sorting)
-    database_column = Struct.new(:name, :type).new("id", :integer)
+    database_column = Struct.new(:name, :type).new('id', :integer)
     active_scaffold_column_class = Struct.new(:name, :sortable) do
       def sortable?
         sortable
       end
     end
-    active_scaffold_columns = (["id"] + sortable_column_names).uniq.map do |name|
+    active_scaffold_columns = (['id'] + sortable_column_names).uniq.map do |name|
       active_scaffold_column_class.new(name, sortable_column_names.include?(name))
     end
     model_name = Struct.new(:route_key) do
       def human(count:)
-        count == 2 ? "Widgets" : "Widget"
+        count == 2 ? 'Widgets' : 'Widget'
       end
-    end.new("widgets")
-    model = Struct.new(:model_name, :primary_key).new(model_name, "id")
+    end.new('widgets')
+    model = Struct.new(:model_name, :primary_key).new(model_name, 'id')
     search_column = Struct.new(:name, :label)
     configured_search_columns = [
-      search_column.new(:case_number, "Case number"),
+      search_column.new(:case_number, 'Case number'),
       search_column.new(:summary, nil)
     ]
     search_columns = Struct.new(:columns) do
       delegate :any?, to: :columns
 
       def visible_columns(**options)
-        raise "search description must not apply authorization" unless options[:skip_authorization]
-        raise "search columns must be flattened" unless options[:flatten]
+        raise 'search description must not apply authorization' unless options[:skip_authorization]
+        raise 'search columns must be flattened' unless options[:flatten]
 
         columns
       end
@@ -1769,7 +1782,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     security_config = Struct.new(:current_user_method).new(:current_user)
     core = Struct.new(:model, :_columns_hash, :columns, :actions, :search, :security).new(
       model,
-      {"id" => database_column},
+      {'id' => database_column},
       active_scaffold_columns,
       actions,
       search_config,
@@ -1803,26 +1816,26 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
   def build_show_tool_class(settings = {})
     settings = settings.dup
-    id_column = Struct.new(:name, :type).new("id", :integer)
-    case_number_column = Struct.new(:name, :type).new("case_number", :string)
-    name_column = Struct.new(:name, :type).new("name", :string)
-    active_column = Struct.new(:name, :type).new("active", :boolean)
-    reported_at_column = Struct.new(:name, :type).new("reported_at", :datetime)
+    id_column = Struct.new(:name, :type).new('id', :integer)
+    case_number_column = Struct.new(:name, :type).new('case_number', :string)
+    name_column = Struct.new(:name, :type).new('name', :string)
+    active_column = Struct.new(:name, :type).new('active', :boolean)
+    reported_at_column = Struct.new(:name, :type).new('reported_at', :datetime)
     model_name = Struct.new(:route_key) do
       def human(count:)
-        count == 2 ? "Widgets" : "Widget"
+        count == 2 ? 'Widgets' : 'Widget'
       end
-    end.new("widgets")
-    model = Struct.new(:model_name, :primary_key).new(model_name, "id")
+    end.new('widgets')
+    model = Struct.new(:model_name, :primary_key).new(model_name, 'id')
     model.define_singleton_method(:authorized_for?) { |_options| true }
     core = Struct.new(:model, :_columns_hash, :actions).new(
       model,
       {
-        "id" => id_column,
-        "case_number" => case_number_column,
-        "name" => name_column,
-        "active" => active_column,
-        "reported_at" => reported_at_column
+        'id' => id_column,
+        'case_number' => case_number_column,
+        'name' => name_column,
+        'active' => active_column,
+        'reported_at' => reported_at_column
       },
       [:show]
     )

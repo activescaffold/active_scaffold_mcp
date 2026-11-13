@@ -114,8 +114,8 @@ module ActiveScaffold
 
       def matching_rule(rules, **values)
         rules.select { |rule| rule.matches?(values) }
-             .max_by { |rule| [rule.specificity, rule.position] }
-             &.generator
+          .max_by { |rule| [rule.specificity, rule.position] }
+          &.generator
       end
 
       def columns?(action_config)
@@ -144,7 +144,7 @@ module ActiveScaffold
 
       def custom_action_config_for(core_config, action_name)
         custom_actions = value_for(core_config, :custom_actions)
-        return unless custom_actions&.respond_to?(:[])
+        return unless custom_actions.respond_to?(:[])
 
         custom_actions[action_name.to_sym] || custom_actions[action_name.to_s]
       end

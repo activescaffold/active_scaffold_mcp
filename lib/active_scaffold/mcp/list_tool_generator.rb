@@ -16,25 +16,9 @@ module ActiveScaffold
         def generate_tool_for(controller_class:, action_name:, action_config:, mcp_config:, settings:)
           core_config = mcp_config.core
           mappings = {}
-
-          list_tool = Class.new(ActiveScaffold::MCP::ListTool).tap do |tool_class|
-            configure_tool_class(tool_class, controller_class:, action_name:, core_config:, mcp_config:, settings:)
-            include_config_list(tool_class, core_config)
-            tool_class.read_only
-
-            views_tool_name = "#{tool_class.tool_name}_views" if saved_views_enabled?(core_config)
-            list_views = add_list_view_property(tool_class, core_config, views_tool_name)
-            add_column_filter_properties(tool_class, core_config, settings, mappings)
-            add_named_filter_properties(tool_class, action_config, settings, mappings)
-            add_search_property(tool_class, core_config, settings, mappings)
-            sortable_columns = add_sorting_properties(tool_class, core_config, action_config)
-            add_pagination_properties(tool_class, action_config)
-            generated_description = description(tool_class.title, mappings, sortable_columns, action_config, list_views)
-            tool_class.description(settings[:description] || generated_description)
-            tool_class.mcp_param_mappings = mappings.freeze
-
-            include_extensions(tool_class, settings)
-          end
+          list_tool = build_list_tool(
+            controller_class:, action_name:, action_config:, core_config:, mcp_config:, settings:, mappings:
+          )
 
           return list_tool unless saved_views_enabled?(core_config)
 
@@ -48,18 +32,34 @@ module ActiveScaffold
 
         private
 
+        def build_list_tool(controller_class:, action_name:, action_config:, core_config:, mcp_config:, settings:,
+                            mappings:)
+          Class.new(ActiveScaffold::MCP::ListTool).tap do |tool_class|
+            configure_tool_class(tool_class, controller_class:, action_name:, core_config:, mcp_config:, settings:)
+            include_config_list(tool_class, core_config)
+            tool_class.read_only
+            views_tool_name = "#{tool_class.tool_name}_views" if saved_views_enabled?(core_config)
+            list_views = add_list_view_property(tool_class, core_config, views_tool_name)
+            add_column_filter_properties(tool_class, core_config, settings, mappings)
+            add_named_filter_properties(tool_class, action_config, settings, mappings)
+            add_search_property(tool_class, core_config, settings, mappings)
+            sortable_columns = add_sorting_properties(tool_class, core_config, action_config)
+            add_pagination_properties(tool_class, action_config)
+            generated_description = description(tool_class.title, mappings, sortable_columns, action_config, list_views)
+            tool_class.description(settings[:description] || generated_description)
+            tool_class.mcp_param_mappings = mappings.freeze
+            include_extensions(tool_class, settings)
+          end
+        end
+
         def include_config_list(tool_class, core_config)
           return unless core_config.actions.include?(:config_list)
 
-          tool_class.include "ActiveScaffold::Actions::ConfigList".constantize
+          tool_class.include 'ActiveScaffold::Actions::ConfigList'.constantize
         end
 
         def description(title, mappings, sortable_columns, action_config, list_views)
-          filter_types = []
-          filter_types << "column filters" if mappings.any? { |_name, mapping| mapping[:source].nil? }
-          filter_types << "named list filters" if mappings.any? { |_name, mapping| mapping[:source] == :named_filter }
-          filter_types << "full-text search" if mappings.any? { |_name, mapping| mapping[:source] == :search }
-
+          filter_types = filter_types_for(mappings)
           sentences = ["#{title} as a paginated collection"]
           sentences << "Supports #{filter_types.to_sentence}" if filter_types.any?
           search_mapping = mappings.values.find { |mapping| mapping[:source] == :search }
@@ -69,8 +69,17 @@ module ActiveScaffold
             sentences << default_sorting_description(action_config)
           end
           sentences << list_views[:description] if list_views
-          sentences << "Use limit and page for pagination"
+          sentences << 'Use limit and page for pagination'
           "#{sentences.join('. ')}."
+        end
+
+        def filter_types_for(mappings)
+          sources = mappings.values.pluck(:source)
+          filter_types = []
+          filter_types << 'column filters' if sources.include?(nil)
+          filter_types << 'named list filters' if sources.include?(:named_filter)
+          filter_types << 'full-text search' if sources.include?(:search)
+          filter_types
         end
 
         def add_list_view_property(tool_class, core_config, views_tool_name)
@@ -81,13 +90,13 @@ module ActiveScaffold
           saved_views = saved_views_enabled?(core_config)
           return if configured_names.empty? && !saved_views
 
-          sentences = ["Select a named list view to change the returned columns and default sorting"]
+          sentences = ['Select a named list view to change the returned columns and default sorting']
           sentences << "Configured views: #{formatted_column_names(configured_names)}" if configured_names.any?
           if saved_views
             sentences << "Call `#{views_tool_name}` to get all views available to the current user"
           end
-          description = sentences.join(". ")
-          property_options = {type: "string", description: description}
+          description = sentences.join('. ')
+          property_options = {type: 'string', description: description}
           property_options[:enum] = configured_names unless saved_views
           tool_class.property :list_view, **property_options
           {description: description}
@@ -107,7 +116,7 @@ module ActiveScaffold
             tool_class.title("List views for #{tool_resource_label(mcp_config, settings)}")
             tool_class.description(
               "List all named views available to the current user for `#{list_tool.tool_name}`. " \
-              "Pass a returned `value` to its `list_view` argument; omit `list_view` to use the default columns."
+              'Pass a returned `value` to its `list_view` argument; omit `list_view` to use the default columns.'
             )
             include_config_list(tool_class, core_config)
             tool_class.read_only
@@ -161,11 +170,13 @@ module ActiveScaffold
           columns = core_config._columns_hash.values
           selected_columns = case set_name.to_sym
                              when :foreign_keys
-                               columns.select { |column| column.name.end_with?("_id") }
+                               columns.select { |column| column.name.end_with?('_id') }
                              when :dates
                                columns.select { |column| column.type.to_sym == :date }
                              when :timestamps
-                               columns.select { |column| %i[datetime timestamp timestamptz].include?(column.type.to_sym) }
+                               columns.select do |column|
+                                 %i[datetime timestamp timestamptz].include?(column.type.to_sym)
+                               end
                              else
                                raise ArgumentError, "unknown MCP filter column set: #{set_name}"
                              end
@@ -180,34 +191,52 @@ module ActiveScaffold
         def add_operator_properties(tool_class, column_name, column, operator, mappings)
           case operator
           when :equal, :not_equal
-            property_name = operator == :equal ? column_name : :"#{column_name}_not"
-            add_scalar_property(tool_class, property_name, column, "Filter by #{column_name}")
-            mappings[property_name.to_sym] = {target: column_name.to_sym, operator: operator}
+            add_equality_property(tool_class, column_name, column, operator, mappings)
           when :in, :not_in
-            property_name = operator == :in ? :"#{column_name}_in" : :"#{column_name}_not_in"
-            tool_class.collection property_name,
-                                  type: json_type(column),
-                                  description: "Filter #{column_name} by a list of values"
-            mappings[property_name] = {target: column_name.to_sym, operator: operator}
+            add_collection_property(tool_class, column_name, column, operator, mappings)
           when :between, :not_between
-            prefix = operator == :between ? column_name : :"#{column_name}_not"
-            %i[from to].each do |endpoint|
-              property_name = :"#{prefix}_#{endpoint}"
-              add_scalar_property(tool_class, property_name, column, "#{endpoint.to_s.humanize} value for #{column_name}")
-              mappings[property_name] = {
-                target: column_name.to_sym,
-                operator: :"#{'not_' if operator == :not_between}between_#{endpoint}"
-              }
-            end
+            add_range_properties(tool_class, column_name, column, operator, mappings)
           when :null, :not_null
-            property_name = operator == :null ? :"#{column_name}_null" : :"#{column_name}_not_null"
-            tool_class.property property_name,
-                                type: "boolean",
-                                description: "Match records where #{column_name} is #{'not ' if operator == :not_null}null"
-            mappings[property_name] = {target: column_name.to_sym, operator: operator}
+            add_null_property(tool_class, column_name, operator, mappings)
           else
             raise ArgumentError, "unsupported MCP filter operator for #{column_name}: #{operator}"
           end
+        end
+
+        def add_equality_property(tool_class, column_name, column, operator, mappings)
+          property_name = operator == :equal ? column_name : :"#{column_name}_not"
+          add_scalar_property(tool_class, property_name, column, "Filter by #{column_name}")
+          mappings[property_name.to_sym] = {target: column_name.to_sym, operator: operator}
+        end
+
+        def add_collection_property(tool_class, column_name, column, operator, mappings)
+          property_name = operator == :in ? :"#{column_name}_in" : :"#{column_name}_not_in"
+          tool_class.collection property_name,
+                                type: json_type(column),
+                                description: "Filter #{column_name} by a list of values"
+          mappings[property_name] = {target: column_name.to_sym, operator: operator}
+        end
+
+        def add_range_properties(tool_class, column_name, column, operator, mappings)
+          prefix = operator == :between ? column_name : :"#{column_name}_not"
+          %i[from to].each do |endpoint|
+            property_name = :"#{prefix}_#{endpoint}"
+            add_scalar_property(tool_class, property_name, column,
+                                "#{endpoint.to_s.humanize} value for #{column_name}")
+            mappings[property_name] = {
+              target: column_name.to_sym,
+              operator: :"#{'not_' if operator == :not_between}between_#{endpoint}"
+            }
+          end
+        end
+
+        def add_null_property(tool_class, column_name, operator, mappings)
+          property_name = operator == :null ? :"#{column_name}_null" : :"#{column_name}_not_null"
+          description = "Match records where #{column_name} is #{'not ' if operator == :not_null}null"
+          tool_class.property property_name,
+                              type: 'boolean',
+                              description: description
+          mappings[property_name] = {target: column_name.to_sym, operator: operator}
         end
 
         def add_scalar_property(tool_class, property_name, column, description)
@@ -223,7 +252,7 @@ module ActiveScaffold
 
             option_names = filter.map { |option| option.name.to_s }
             tool_class.property property_name,
-                                type: "string",
+                                type: 'string',
                                 description: named_filter_description(filter),
                                 default: filter.default_option&.to_s,
                                 enum: option_names
@@ -235,14 +264,14 @@ module ActiveScaffold
           sentences = [filter.description || "Apply the #{filter.name} list filter"]
           sentences << "When omitted, the server uses the default option '#{filter.default_option}'"
           if filter.security_method_set?
-            sentences << "This filter may be disallowed in the current context"
+            sentences << 'This filter may be disallowed in the current context'
           else
             secured_options = filter.select(&:security_method_set?).map { |option| option.name.to_s }
             if secured_options.any?
               sentences << "These options may be disallowed in the current context: #{secured_options.to_sentence}"
             end
           end
-          sentences.join(". ")
+          sentences.join('. ')
         end
 
         def selected_filters(action_config, configured_filters)
@@ -258,7 +287,7 @@ module ActiveScaffold
           description = search_property_description(core_config)
           tool_class.include ActiveScaffold::Actions::Search
           tool_class.property :search,
-                              type: "string",
+                              type: 'string',
                               description: description
           mappings[:search] = {target: :search, operator: :equal, source: :search, description: description}
         end
@@ -266,7 +295,7 @@ module ActiveScaffold
         def search_property_description(core_config)
           columns = core_config.search.columns.visible_columns(skip_authorization: true, flatten: true)
           labels = columns.map { |column| column.label.presence || column.name.to_s.humanize }
-          return "Search text across the configured ActiveScaffold search columns" if labels.empty?
+          return 'Search text across the configured ActiveScaffold search columns' if labels.empty?
 
           displayed_labels = labels.first(12)
           remaining_count = labels.length - displayed_labels.length
@@ -284,15 +313,16 @@ module ActiveScaffold
           column_names = columns.map { |column| column.name.to_s }
           return [] if column_names.empty?
 
+          description = "Column to sort by. Allowed columns: #{formatted_column_names(column_names)}. " \
+                        "#{default_sorting_description(action_config)}."
           tool_class.property :sort,
-                              type: "string",
-                              description: "Column to sort by. Allowed columns: #{formatted_column_names(column_names)}. " \
-                                           "#{default_sorting_description(action_config)}.",
+                              type: 'string',
+                              description: description,
                               enum: column_names
           tool_class.property :sort_direction,
-                              type: "string",
-                              description: "Sort direction used when sort is provided; defaults to asc",
-                              default: "asc",
+                              type: 'string',
+                              description: 'Sort direction used when sort is provided; defaults to asc',
+                              default: 'asc',
                               enum: %w[asc desc]
           column_names
         end
@@ -309,7 +339,7 @@ module ActiveScaffold
           if clauses.any?
             "When sort is omitted, the ActiveScaffold default sorting is #{clauses.to_sentence}"
           else
-            "When sort is omitted, the configured ActiveScaffold default sorting is used"
+            'When sort is omitted, the configured ActiveScaffold default sorting is used'
           end
         end
 
@@ -321,18 +351,17 @@ module ActiveScaffold
                             ActiveScaffold::MCP::ListTool::DEFAULT_LIMIT
                           end
           tool_class.property :limit,
-                              type: "integer",
-                              description: "Maximum records to return",
+                              type: 'integer',
+                              description: 'Maximum records to return',
                               default: default_limit,
                               minimum: 1,
                               maximum: ActiveScaffold::MCP::ListTool::MAX_LIMIT
           tool_class.property :page,
-                              type: "integer",
-                              description: "Page number",
+                              type: 'integer',
+                              description: 'Page number',
                               default: 1,
                               minimum: 1
         end
-
       end
     end
   end

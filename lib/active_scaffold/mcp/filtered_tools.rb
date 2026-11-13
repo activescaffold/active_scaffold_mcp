@@ -13,6 +13,6 @@ module ActiveScaffold
   end
 end
 
-unless ActionMCP::Configuration.ancestors.include?(ActiveScaffold::MCP::FilteredTools)
+unless ActionMCP::Configuration <= ActiveScaffold::MCP::FilteredTools
   ActionMCP::Configuration.prepend(ActiveScaffold::MCP::FilteredTools)
 end

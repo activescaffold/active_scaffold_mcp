@@ -8,9 +8,9 @@ module ActiveScaffold
       module_function
 
       def resolve(reference)
-        class_name, separator, id = reference.to_s.rpartition("#")
+        class_name, separator, id = reference.to_s.rpartition('#')
         if separator.empty? || class_name.empty? || id.empty?
-          raise InvalidReference, "MCP_USER must use CLASS#ID, for example: User#201"
+          raise InvalidReference, 'MCP_USER must use CLASS#ID, for example: User#201'
         end
 
         user_class = class_name.safe_constantize

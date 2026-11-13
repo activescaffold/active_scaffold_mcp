@@ -37,7 +37,7 @@ module ActiveScaffold
         when :description, :label, :name
           (value.is_a?(String) || value.is_a?(Symbol)) && value.to_s.present?
         when :modules, :presenter_modules
-          Array(value).all? { |extension| extension.is_a?(Module) }
+          Array(value).all?(Module)
         when :presenter
           value.is_a?(Class)
         end

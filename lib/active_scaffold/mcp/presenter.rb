@@ -13,16 +13,14 @@ module ActiveScaffold
         return true if column.association || respond_to?(column_method_name(column), true)
         return false unless model.public_method_defined?(column.name)
 
-        model.instance_method(column.name).parameters.none? { |type, _| type == :req || type == :keyreq }
+        model.instance_method(column.name).parameters.none? { |type, _| %i[req keyreq].include?(type) }
       end
 
       def record(record, columns, counts = nil)
-        columns.each_with_object({}) do |column, result|
-          result[column.name] = column_value(record, column, counts)
+        columns.to_h do |column|
+          [column.name, column_value(record, column, counts)]
         end
       end
-
-      protected
 
       delegate :active_scaffold_config, :current_user, :params, to: :tool
 
@@ -35,7 +33,10 @@ module ActiveScaffold
       def column_value(record, column, counts)
         column_method = column_method_name(column)
         return send(column_method, record, column) if respond_to?(column_method, true)
-        return association_value(record, record.public_send(column.association.name), column, counts) if column.association
+        if column.association
+          return association_value(record, record.public_send(column.association.name), column,
+                                   counts)
+        end
 
         record.public_send(column.name)
       end
@@ -59,34 +60,37 @@ module ActiveScaffold
         count = association_size(record, value, column, counts) if associated_number
         return associated_number ? count : nil if associated_limit.zero?
 
+        limited_collection_association_value(value, associated_limit, associated_number, count)
+      end
+
+      def limited_collection_association_value(value, associated_limit, associated_number, count)
         loaded_limit = associated_number ? associated_limit : associated_limit + 1
         associated_records = limited_associated_records(value, loaded_limit)
         more_records = associated_number ? count > associated_limit : associated_records.size > associated_limit
         associated_records = associated_records.first(associated_limit)
         records = associated_records.map { |associated_record| associated_record_hash(associated_record) }
-        displayed_count =
-          if associated_number
-            count
-          elsif more_records
-            ">#{associated_limit}"
-          else
-            records.size
-          end
 
         {
           (more_records ? :first_records : :records) => records,
-          count: displayed_count
+          count: displayed_association_count(records, associated_limit, associated_number, count, more_records)
         }
       end
 
-      def limited_associated_records(value, limit)
-        if value.respond_to?(:loaded?) && value.loaded?
-          value.first(limit)
-        elsif value.respond_to?(:limit)
-          value.limit(limit).to_a
+      def displayed_association_count(records, associated_limit, associated_number, count, more_records)
+        if associated_number
+          count
+        elsif more_records
+          ">#{associated_limit}"
         else
-          value.first(limit)
+          records.size
         end
+      end
+
+      def limited_associated_records(value, limit)
+        return value.first(limit) if value.respond_to?(:loaded?) && value.loaded?
+        return value.limit(limit).to_a if value.respond_to?(:limit)
+
+        value.first(limit)
       end
 
       def association_size(_record, value, column, counts)

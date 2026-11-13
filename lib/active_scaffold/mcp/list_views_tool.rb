@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require "json"
-require "set"
+require 'json'
 
 module ActiveScaffold
   module MCP
@@ -21,7 +20,7 @@ module ActiveScaffold
           {
             label: view.name.to_s,
             value: view.name.to_s,
-            source: "configured"
+            source: 'configured'
           }.tap do |result|
             result[:description] = view.tooltip.to_s if view.respond_to?(:tooltip) && view.tooltip.present?
           end
@@ -35,7 +34,7 @@ module ActiveScaffold
           {
             label: label.to_s,
             value: value.to_s,
-            source: "saved"
+            source: 'saved'
           }
         end
         configured_views + saved_views

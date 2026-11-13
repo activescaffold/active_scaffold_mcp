@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "json"
+require 'json'
 
 module ActiveScaffold
   module MCP
@@ -54,11 +54,11 @@ module ActiveScaffold
           next unless mcp_argument_provided?(:sort)
 
           active_scaffold_params[:sort] = sort
-          active_scaffold_params[:sort_direction] = sort_direction.presence || "asc"
+          active_scaffold_params[:sort_direction] = sort_direction.presence || 'asc'
         end
       end
 
-      def report_disallowed_filters
+      def report_disallowed_filters # rubocop:disable Naming/PredicateMethod
         disallowed_filters = Array(@filter_states).filter_map do |name, state|
           next unless state[:requested] && state[:status] == :disallowed
 
@@ -71,17 +71,17 @@ module ActiveScaffold
         filter_selections = disallowed_filters.map(&:last)
 
         report_error(
-          "The following requested filter selections could not be applied in this call because they were not allowed " \
+          'The following requested filter selections could not be applied in this call because they were not allowed ' \
           "for its current arguments and context: #{filter_selections.to_sentence}. No records were returned. " \
           "Retry the same call with only #{filter_names.to_sentence} omitted and keep all other arguments unchanged. " \
-          "Filter availability is evaluated for each call, so the selection may be allowed with different arguments " \
-          "or context."
+          'Filter availability is evaluated for each call, so the selection may be allowed with different arguments ' \
+          'or context.'
         )
         true
       end
 
       def action_not_allowed_message
-        return super unless params[:config_list_view].present?
+        return super if params[:config_list_view].blank?
 
         "List view #{params[:config_list_view].inspect} is not allowed for the current user."
       end

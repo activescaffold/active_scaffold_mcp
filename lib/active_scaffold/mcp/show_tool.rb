@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "json"
+require 'json'
 
 module ActiveScaffold
   module MCP
@@ -48,21 +48,22 @@ module ActiveScaffold
         [:id, *self.class.mcp_lookup_column_names]
       end
 
-      def resolve_lookup_id
+      def resolve_lookup_id # rubocop:disable Naming/PredicateMethod
         return true if mcp_argument_provided?(:id)
 
         column_name = self.class.mcp_lookup_column_names.find { |name| mcp_argument_provided?(name) }
         # Resolve exact identifiers within the base scope, without list filters
         # (including defaults) hiding an otherwise showable record.
         ids = beginning_of_chain.where(column_name => public_send(column_name))
-                                .limit(2)
-                                .pluck(self.class.mcp_primary_key_name)
+                .limit(2)
+                .pluck(self.class.mcp_primary_key_name)
         if ids.empty?
-          report_error("No record found for #{column_name} #{public_send(column_name).inspect}")
+          report_error "No record found for #{column_name} #{public_send(column_name).inspect}"
           return false
         end
         if ids.many?
-          report_error("More than one record found for #{column_name} #{public_send(column_name).inspect}; use id instead")
+          report_error "More than one record found for #{column_name} #{public_send(column_name).inspect}; " \
+                       'use id instead'
           return false
         end
 

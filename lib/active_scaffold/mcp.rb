@@ -1,32 +1,31 @@
 # frozen_string_literal: true
 
-require "active_scaffold/mcp/filtered_tools"
-require "set"
+require 'active_scaffold/mcp/filtered_tools'
 
 module ActiveScaffold
   module Actions
-    autoload :MCP, "active_scaffold/actions/mcp"
+    autoload :MCP, 'active_scaffold/actions/mcp'
   end
 
   module Config
-    autoload :MCP, "active_scaffold/config/mcp"
+    autoload :MCP, 'active_scaffold/config/mcp'
   end
 
   module MCP
-    autoload :ActionConfig, "active_scaffold/mcp/action_config"
-    autoload :Flash, "active_scaffold/mcp/flash"
-    autoload :GeneratorFactory, "active_scaffold/mcp/generator_factory"
-    autoload :ListToolGenerator, "active_scaffold/mcp/list_tool_generator"
-    autoload :Presenter, "active_scaffold/mcp/presenter"
-    autoload :ProfileUser, "active_scaffold/mcp/profile_user"
-    autoload :SettingsValidator, "active_scaffold/mcp/settings_validator"
-    autoload :Tool, "active_scaffold/mcp/tool"
-    autoload :ToolGenerator, "active_scaffold/mcp/tool_generator"
-    autoload :ListTool, "active_scaffold/mcp/list_tool"
-    autoload :ShowTool, "active_scaffold/mcp/show_tool"
-    autoload :ListViewsTool, "active_scaffold/mcp/list_views_tool"
-    autoload :ShowToolGenerator, "active_scaffold/mcp/show_tool_generator"
-    autoload :VERSION, "active_scaffold/mcp/version"
+    autoload :ActionConfig, 'active_scaffold/mcp/action_config'
+    autoload :Flash, 'active_scaffold/mcp/flash'
+    autoload :GeneratorFactory, 'active_scaffold/mcp/generator_factory'
+    autoload :ListToolGenerator, 'active_scaffold/mcp/list_tool_generator'
+    autoload :Presenter, 'active_scaffold/mcp/presenter'
+    autoload :ProfileUser, 'active_scaffold/mcp/profile_user'
+    autoload :SettingsValidator, 'active_scaffold/mcp/settings_validator'
+    autoload :Tool, 'active_scaffold/mcp/tool'
+    autoload :ToolGenerator, 'active_scaffold/mcp/tool_generator'
+    autoload :ListTool, 'active_scaffold/mcp/list_tool'
+    autoload :ShowTool, 'active_scaffold/mcp/show_tool'
+    autoload :ListViewsTool, 'active_scaffold/mcp/list_views_tool'
+    autoload :ShowToolGenerator, 'active_scaffold/mcp/show_tool_generator'
+    autoload :VERSION, 'active_scaffold/mcp/version'
 
     class << self
       def generated_controller_names

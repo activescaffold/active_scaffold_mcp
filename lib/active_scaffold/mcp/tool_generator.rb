@@ -61,22 +61,22 @@ module ActiveScaffold
         def json_type(column)
           case column&.type&.to_sym
           when :integer, :bigint
-            "integer"
+            'integer'
           when :float, :decimal
-            "number"
+            'number'
           when :boolean
-            "boolean"
+            'boolean'
           else
-            "string"
+            'string'
           end
         end
 
         def json_format(column)
           case column&.type&.to_sym
           when :date
-            "date"
+            'date'
           when :datetime, :timestamp, :timestamptz
-            "date-time"
+            'date-time'
           end
         end
       end

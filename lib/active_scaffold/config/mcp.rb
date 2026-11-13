@@ -14,11 +14,11 @@ module ActiveScaffold
       cattr_accessor :actions, instance_accessor: false, default: {}.freeze
       cattr_accessor :filter_column_sets, instance_accessor: false, default: {}.freeze
       cattr_accessor :base_tool, instance_accessor: false,
-                    default: -> { "ApplicationMCPTool".safe_constantize || ActionMCP::Tool }
+                                 default: -> { 'ApplicationMCPTool'.safe_constantize || ActionMCP::Tool }
       cattr_accessor :settings_validator, instance_accessor: false,
-                    default: ActiveScaffold::MCP::SettingsValidator
+                                          default: ActiveScaffold::MCP::SettingsValidator
       cattr_accessor :tool_generator, instance_accessor: false,
-                    default: ActiveScaffold::MCP::GeneratorFactory.new
+                                      default: ActiveScaffold::MCP::GeneratorFactory.new
 
       class << self
         alias unvalidated_actions= actions=
@@ -38,9 +38,15 @@ module ActiveScaffold
 
         def resolved_settings_validator
           configured_validator = settings_validator
-          if !defined?(@resolved_settings_validator_source) || @resolved_settings_validator_source != configured_validator
+          if !defined?(@resolved_settings_validator_source) ||
+             @resolved_settings_validator_source != configured_validator
             @resolved_settings_validator_source = configured_validator
-            @resolved_settings_validator = configured_validator.is_a?(Class) ? configured_validator.new : configured_validator
+            @resolved_settings_validator =
+              if configured_validator.is_a?(Class)
+                configured_validator.new
+              else
+                configured_validator
+              end
           end
 
           @resolved_settings_validator
@@ -91,8 +97,8 @@ module ActiveScaffold
               result[action_name.to_sym] = normalize_action_settings(action_name, settings)
             end
           else
-            Array(value).each_with_object({}) do |action_name, result|
-              result[action_name.to_sym] = {}
+            Array(value).to_h do |action_name|
+              [action_name.to_sym, {}]
             end
           end
         end
@@ -115,24 +121,20 @@ module ActiveScaffold
 
         def normalize_settings(settings)
           settings.each_with_object({}) do |(name, value), result|
-            result[name] = case name
-                           when :description, :label, :name
-                             value.to_s
-                           when :columns, :lookup_columns
-                             normalize_names(value)
-                           when :filter_columns
-                             value.is_a?(Hash) ? normalize_operator_map(value) : normalize_names(value)
-                           when :filter_column_sets
-                             normalize_filter_column_sets(value)
-                           when :filters
-                             all?(value) ? :all : normalize_names(value)
-                           when :modules, :presenter_modules
-                             Array(value).compact
-                           when :presenter
-                             value
-                           else
-                             duplicate_setting(value)
-                           end
+            result[name] = normalize_setting(name, value)
+          end
+        end
+
+        def normalize_setting(name, value)
+          case name
+          when :description, :label, :name then value.to_s
+          when :columns, :lookup_columns then normalize_names(value)
+          when :filter_columns then value.is_a?(Hash) ? normalize_operator_map(value) : normalize_names(value)
+          when :filter_column_sets then normalize_filter_column_sets(value)
+          when :filters then all?(value) ? :all : normalize_names(value)
+          when :modules, :presenter_modules then Array(value).compact
+          when :presenter then value
+          else duplicate_setting(value)
           end
         end
 
@@ -168,8 +170,8 @@ module ActiveScaffold
 
           unless value.is_a?(Hash)
             raise ArgumentError,
-                  "filter_column_sets must be a hash mapping set names to operators, " \
-                  "for example: {foreign_keys: :in, timestamps: :range}"
+                  'filter_column_sets must be a hash mapping set names to operators, ' \
+                  'for example: {foreign_keys: :in, timestamps: :range}'
           end
 
           normalize_operator_map(value)
@@ -192,7 +194,7 @@ module ActiveScaffold
         end
 
         def all?(value)
-          value == :all || value == "all"
+          [:all, 'all'].include?(value)
         end
 
         def normalize_names(value)
@@ -271,9 +273,7 @@ module ActiveScaffold
         value
       end
 
-      def validate_mcp_setting!(action_name, setting, value)
-        self.class.validate_mcp_setting!(action_name, setting, value)
-      end
+      delegate :validate_mcp_setting!, to: :class
 
       def method_missing(name, *args)
         if args.empty? && mcp_action?(name)
