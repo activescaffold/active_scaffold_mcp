@@ -1,10 +1,8 @@
 # frozen_string_literal: true
 
-require 'simplecov_json_formatter'
-
 SimpleCov.configure do
-  add_filter '/test/'
-  track_files '{app,lib}/**/*.rb'
+  skip '/test/'
+  cover '{app,lib}/**/*.rb'
 end
 
 SimpleCov.formatters = [
