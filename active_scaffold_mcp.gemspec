@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
-require_relative 'lib/active_scaffold/mcp/version'
+gemspec_dir = __dir__ || Dir.pwd
+$LOAD_PATH.unshift File.expand_path('lib', gemspec_dir)
+require 'active_scaffold/mcp/version'
 
 Gem::Specification.new do |spec|
   spec.name = 'active_scaffold_mcp'
@@ -13,7 +15,7 @@ Gem::Specification.new do |spec|
   spec.license = 'MIT'
   spec.required_ruby_version = '>= 3.4'
 
-  spec.files = Dir.chdir(__dir__) do
+  spec.files = Dir.chdir(gemspec_dir) do
     Dir['lib/**/*', 'LICENSE.txt', 'README.md']
   end
   spec.require_paths = ['lib']

@@ -61,6 +61,9 @@ mode = "comment"
 # These helpers have at most five positional arguments.
 threshold = 7
 
+[runtimes.enabled]
+ruby = "3.4.7"
+
 [[source]]
 name = "default"
 default = true
