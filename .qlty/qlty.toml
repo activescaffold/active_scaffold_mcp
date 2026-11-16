@@ -58,8 +58,9 @@ mode = "comment"
 
 [smells.function_parameters]
 # Qlty counts Ruby keyword arguments, while RuboCop intentionally does not.
-# These helpers have at most five positional arguments.
-threshold = 7
+# These helpers have at most five positional arguments. Generator methods pass
+# cohesive keyword configuration through without relying on argument order.
+threshold = 8
 
 [runtimes.enabled]
 ruby = "3.4.7"
