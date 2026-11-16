@@ -1,5 +1,12 @@
 # ActiveScaffold MCP
 
+[![Build status](https://github.com/activescaffold/active_scaffold_mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/activescaffold/active_scaffold_mcp/actions/workflows/ci.yml)
+[![Maintainability](https://qlty.sh/gh/activescaffold/projects/active_scaffold_mcp/maintainability.svg)](https://qlty.sh/gh/activescaffold/projects/active_scaffold_mcp)
+[![Code Coverage](https://qlty.sh/gh/activescaffold/projects/active_scaffold_mcp/coverage.svg)](https://qlty.sh/gh/activescaffold/projects/active_scaffold_mcp)
+[![Gem Version](https://badge.fury.io/rb/active_scaffold_mcp.svg)](https://badge.fury.io/rb/active_scaffold_mcp)
+[![Inline docs](https://inch-ci.org/github/activescaffold/active_scaffold_mcp.svg?branch=main)](https://inch-ci.org/github/activescaffold/active_scaffold_mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 `active_scaffold_mcp` generates ActionMCP tools from ActiveScaffold controller configuration.
 
 The gem is under initial development. The first implementation will provide a configuration DSL, a generated-tool registry, and read-only list and show tools.
