@@ -224,6 +224,44 @@ config.mcp.expose :list, presenter_modules: TicketMCPPresentation
 config.mcp.expose :show, presenter_modules: TicketMCPPresentation
 ```
 
+A presenter module may also handle every column configured with a particular
+ActiveScaffold UI. List tools dispatch `mcp_list_#{list_ui}`. Show tools first
+try `mcp_show_#{show_ui}`, then reuse `mcp_list_#{show_ui}` when there is no
+show-specific method, matching ActiveScaffold's UI inheritance. The methods
+receive the same record, column, and UI-options inputs used by the corresponding
+ActiveScaffold helpers:
+
+```ruby
+module AttachmentMCPPresentation
+  def mcp_list_paperclip(record, column, ui_options:)
+    attachment_metadata(record, column, ui_options)
+  end
+
+  def mcp_show_paperclip(record, column, ui_options:)
+    attachment_metadata(record, column, ui_options)
+  end
+
+  private
+
+  def attachment_metadata(record, column, _ui_options)
+    attachment = record.public_send(column.name)
+    {filename: attachment.original_filename, content_type: attachment.content_type}
+  end
+end
+```
+
+The default presenter supports ActiveScaffold's Active Storage, Paperclip,
+CarrierWave, Dragonfly, and file-column bridges. Attached files are represented
+as JSON metadata with the fields available from each backend: `filename`,
+`content_type`, `byte_size`, and `updated_at`. Missing fields are omitted,
+missing attachments are `null`, and multiple Active Storage attachments are an
+array of metadata objects. File contents and expiring download URLs are not
+embedded in record JSON.
+
+A `#{column.name}_column` method takes precedence over the `show_ui` handler.
+If neither is defined, the presenter uses its standard association or model
+attribute serialization.
+
 Each generated action gets its own anonymous presenter subclass when presenter
 modules are configured, so the modules do not modify the base presenter or
 other MCP tools. `modules` extends the tool's query and authorization behavior;

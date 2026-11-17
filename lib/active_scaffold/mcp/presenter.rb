@@ -10,7 +10,7 @@ module ActiveScaffold
       end
 
       def presentable_column?(column)
-        return true if column.association || respond_to?(column_method_name(column), true)
+        return true if column.association || presentation_method_name(column)
         return false unless model.public_method_defined?(column.name)
 
         model.instance_method(column.name).parameters.none? { |type, _| %i[req keyreq].include?(type) }
@@ -30,9 +30,49 @@ module ActiveScaffold
         :"#{column.name}_column"
       end
 
-      def column_value(record, column, counts)
+      def ui_method_names(column)
+        action_name = tool.action_name
+        return [] unless %w[list show].include?(action_name)
+
+        ui_method = :"#{action_name}_ui"
+        ui = column.public_send(ui_method)
+        return [] unless ui
+
+        methods = [:"mcp_#{action_name}_#{ui}"]
+        methods << :"mcp_list_#{ui}" if action_name == 'show'
+        methods.uniq
+      end
+
+      def ui_options(column)
+        column.public_send(:"#{tool.action_name}_ui_options") || column.options
+      end
+
+      def presentation_method_name(column)
+        @presentation_method_names ||= {}.compare_by_identity
+        @presentation_method_names.fetch(column) do
+          @presentation_method_names[column] = resolve_presentation_method_name(column)
+        end
+      end
+
+      def resolve_presentation_method_name(column)
         column_method = column_method_name(column)
-        return send(column_method, record, column) if respond_to?(column_method, true)
+        return column_method if respond_to?(column_method, true)
+
+        ui_method_names(column).find { |method_name| respond_to?(method_name, true) }
+      end
+
+      def column_value(record, column, counts)
+        presentation_method = presentation_method_name(column)
+        if presentation_method == column_method_name(column)
+          return send(presentation_method, record, column)
+        elsif presentation_method
+          return send(
+            presentation_method,
+            record,
+            column,
+            ui_options: ui_options(column)
+          )
+        end
         if column.association
           return association_value(record, record.public_send(column.association.name), column,
                                    counts)
@@ -40,6 +80,62 @@ module ActiveScaffold
 
         record.public_send(column.name)
       end
+
+      def mcp_list_active_storage_has_one(record, column, ui_options:)
+        attached = record.public_send(column.name)
+        return unless attached.attached?
+
+        active_storage_attachment_metadata(attached.attachment)
+      end
+
+      def mcp_list_active_storage_has_many(record, column, ui_options:)
+        attached = record.public_send(column.name)
+        return unless attached.attached?
+
+        attached.attachments.map { |attachment| active_storage_attachment_metadata(attachment) }
+      end
+
+      def mcp_list_paperclip(record, column, ui_options:)
+        attachment = record.public_send(column.name)
+        return unless attachment.file?
+
+        attachment_metadata(
+          filename: attachment.original_filename,
+          content_type: attachment.content_type,
+          byte_size: attachment.size,
+          updated_at: metadata_value(attachment, :updated_at)
+        )
+      end
+
+      def mcp_list_carrierwave(record, column, ui_options:)
+        uploader = record.public_send(column.name)
+        file = uploader.file
+        return if file.blank?
+
+        attachment_metadata(
+          filename: metadata_value(uploader, :identifier) || metadata_value(file, :filename),
+          content_type: metadata_value(file, :content_type),
+          byte_size: metadata_value(file, :size)
+        )
+      end
+
+      def mcp_list_dragonfly(record, column, ui_options:)
+        attachment = record.public_send(column.name)
+        return if attachment.blank?
+
+        attachment_metadata(
+          filename: metadata_value(attachment, :name),
+          content_type: metadata_value(attachment, :mime_type, :content_type),
+          byte_size: metadata_value(attachment, :size)
+        )
+      end
+
+      def mcp_list_download_link(record, column, ui_options:)
+        file_column_attachment_metadata(record, column)
+      end
+
+      alias mcp_list_download_link_with_filename mcp_list_download_link
+      alias mcp_list_thumbnail mcp_list_download_link
 
       def association_value(record, value, column, counts)
         if column.association.collection?
@@ -107,6 +203,37 @@ module ActiveScaffold
 
       def model
         active_scaffold_config.model
+      end
+
+      def active_storage_attachment_metadata(attachment)
+        blob = attachment.blob
+        attachment_metadata(
+          filename: blob.filename,
+          content_type: blob.content_type,
+          byte_size: blob.byte_size
+        )
+      end
+
+      def file_column_attachment_metadata(record, column)
+        value = record.public_send(column.name)
+        return unless value
+
+        attachment_metadata(filename: File.basename(value.to_s))
+      end
+
+      def attachment_metadata(filename:, content_type: nil, byte_size: nil, updated_at: nil)
+        updated_at = updated_at.iso8601 if updated_at.respond_to?(:iso8601)
+        {
+          filename: filename&.to_s,
+          content_type: content_type,
+          byte_size: byte_size,
+          updated_at: updated_at
+        }.compact
+      end
+
+      def metadata_value(object, *methods)
+        method = methods.find { |method_name| object.respond_to?(method_name) }
+        object.public_send(method) if method
       end
     end
   end

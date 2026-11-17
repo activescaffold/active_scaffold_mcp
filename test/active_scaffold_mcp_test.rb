@@ -732,7 +732,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
   end
 
   def test_show_tool_uses_shared_record_serialization
-    column = Struct.new(:name, :association).new(:name, nil)
+    column = presenter_column_class(:name, :association).new(:name, nil)
     record = Struct.new(:name) do
       def authorized_for?(_options)
         true
@@ -765,7 +765,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
   end
 
   def test_show_tool_flattens_grouped_output_columns
-    column = Struct.new(:name, :association).new(:name, nil)
+    column = presenter_column_class(:name, :association).new(:name, nil)
     action_columns = Object.new
     action_columns.define_singleton_method(:visible_columns) do |options = {}|
       options[:flatten] ? [column] : [self]
@@ -1265,7 +1265,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     end
     model.define_singleton_method(:authorized_for?) { |options| options[:column] == :id }
     model.define_singleton_method(:primary_key) { :id }
-    column_class = Struct.new(:name, :association)
+    column_class = presenter_column_class(:name, :association)
     id_column = column_class.new(:id, nil)
     secret_column = column_class.new(:secret, nil)
     config = Struct.new(:model, :columns).new(model, {id: id_column, secret: secret_column})
@@ -1293,7 +1293,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
     end
     model.define_singleton_method(:authorized_for?) { |_options| true }
     model.define_singleton_method(:primary_key) { :id }
-    column_class = Struct.new(:name, :association)
+    column_class = presenter_column_class(:name, :association)
     id_column = column_class.new(:id, nil)
     name_column = column_class.new(:name, nil)
     config = Struct.new(:model, :columns).new(model, {id: id_column, name: name_column})
@@ -1304,7 +1304,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
   end
 
   def test_output_columns_omit_helper_only_virtual_columns_but_keep_nil_model_values
-    column_class = Struct.new(:name, :association)
+    column_class = presenter_column_class(:name, :association)
     virtual_column = column_class.new(:duration, nil)
     model_column = column_class.new(:finished_at, nil)
     model = Struct.new(:finished_at) do
@@ -1326,7 +1326,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
   end
 
   def test_output_columns_omit_model_methods_which_require_arguments
-    column_class = Struct.new(:name, :association)
+    column_class = presenter_column_class(:name, :association)
     columns = %i[required required_keyword optional splat].map { |name| column_class.new(name, nil) }
     model = Class.new do
       def required(value)
@@ -1361,7 +1361,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
         record.required('overridden')
       end
     end
-    column = Struct.new(:name, :association).new(:required, nil)
+    column = presenter_column_class(:name, :association).new(:required, nil)
     model = Class.new do
       def authorized_for?(_options)
         true
@@ -1384,8 +1384,201 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal({required: 'overridden'}, tool.send(:mcp_record_hash, record, [column]))
   end
 
+  def test_presenter_module_can_present_list_columns_by_list_ui
+    extension = Module.new do
+      def mcp_list_badge(record, column, ui_options:)
+        "#{ui_options.fetch(:prefix)}#{record.public_send(column.name)}"
+      end
+    end
+    column_class = presenter_column_class(:name, :association, :list_ui, :list_ui_options, :options)
+    column = column_class.new(:status, nil, :badge, {prefix: 'Status: '}, {})
+    model = Struct.new(:status) do
+      def authorized_for?(_options)
+        true
+      end
+    end
+    model.define_singleton_method(:authorized_for?) { |_options| true }
+    model.define_singleton_method(:primary_key) { nil }
+    config = Struct.new(:model, :columns).new(model, {status: column})
+    tool = build_list_tool_class(presenter_modules: [extension]).new
+    tool.define_singleton_method(:active_scaffold_config) { config }
+    tool.define_singleton_method(:mcp_default_output_columns) { [column] }
+
+    assert_equal [column], tool.send(:mcp_output_columns)
+    assert_equal({status: 'Status: open'}, tool.send(:mcp_record_hash, model.new('open'), [column]))
+  end
+
+  def test_show_presenter_reuses_list_ui_method
+    extension = Module.new do
+      def mcp_list_badge(record, column, ui_options:)
+        "#{ui_options.fetch(:prefix)}#{record.public_send(column.name)}"
+      end
+    end
+    column_class = presenter_column_class(:name, :association, :show_ui, :show_ui_options, :options)
+    column = column_class.new(:status, nil, :badge, {prefix: 'Status: '}, {})
+    model = Struct.new(:status) do
+      def authorized_for?(_options)
+        true
+      end
+    end
+    model.define_singleton_method(:authorized_for?) { |_options| true }
+    model.define_singleton_method(:primary_key) { nil }
+    config = Struct.new(:model, :columns).new(model, {status: column})
+    tool = build_show_tool_class(presenter_modules: [extension]).new
+    tool.define_singleton_method(:active_scaffold_config) { config }
+    tool.define_singleton_method(:mcp_default_output_columns) { [column] }
+
+    assert_equal [column], tool.send(:mcp_output_columns)
+    assert_equal({status: 'Status: open'}, tool.send(:mcp_record_hash, model.new('open'), [column]))
+  end
+
+  def test_show_ui_method_takes_precedence_over_list_ui_method
+    extension = Module.new do
+      def mcp_list_badge(_record, _column, ui_options:)
+        "list #{ui_options.inspect}"
+      end
+
+      def mcp_show_badge(_record, _column, ui_options:)
+        "show #{ui_options.inspect}"
+      end
+    end
+    column_class = presenter_column_class(:name, :association, :show_ui, :show_ui_options, :options)
+    column = column_class.new(:status, nil, :badge, {}, {})
+    model = Struct.new(:status) do
+      def authorized_for?(_options)
+        true
+      end
+    end
+    model.define_singleton_method(:authorized_for?) { |_options| true }
+    model.define_singleton_method(:primary_key) { nil }
+    config = Struct.new(:model, :columns).new(model, {status: column})
+    tool = build_show_tool_class(presenter_modules: [extension]).new
+    tool.define_singleton_method(:active_scaffold_config) { config }
+    tool.define_singleton_method(:mcp_default_output_columns) { [column] }
+
+    assert_equal({status: 'show {}'}, tool.send(:mcp_record_hash, model.new('open'), [column]))
+  end
+
+  def test_presenter_returns_structured_metadata_for_active_scaffold_file_bridges
+    blob_class = Struct.new(:filename, :content_type, :byte_size)
+    active_storage_attachment = Struct.new(:blob).new(blob_class.new('logo.png', 'image/png', 123))
+    active_storage_one = Struct.new(:attachment) do
+      def attached? = true
+    end.new(active_storage_attachment)
+    active_storage_many = Struct.new(:attachments) do
+      def attached? = true
+    end.new([active_storage_attachment])
+    paperclip = Data.define(:original_filename, :content_type, :size, :updated_at) do
+      def file? = true
+    end.new('contract.pdf', 'application/pdf', 456, Time.utc(2026, 1, 2, 3, 4, 5))
+    carrierwave_file = Data.define(:filename, :content_type, :size).new('photo.jpg', 'image/jpeg', 789)
+    carrierwave = Struct.new(:identifier, :file).new('photo.jpg', carrierwave_file)
+    dragonfly = Data.define(:name, :mime_type, :size).new('scan.tif', 'image/tiff', 321)
+    record = Struct.new(:one, :many, :paperclip, :carrierwave, :dragonfly, :file_column).new(
+      active_storage_one,
+      active_storage_many,
+      paperclip,
+      carrierwave,
+      dragonfly,
+      '/uploads/archive.zip'
+    )
+    presenter = build_list_tool_class.new.mcp_presenter
+    column = Struct.new(:name).new
+
+    column.name = :one
+    assert_equal(
+      {filename: 'logo.png', content_type: 'image/png', byte_size: 123},
+      presenter.send(:mcp_list_active_storage_has_one, record, column, ui_options: {})
+    )
+    column.name = :many
+    assert_equal(
+      [{filename: 'logo.png', content_type: 'image/png', byte_size: 123}],
+      presenter.send(:mcp_list_active_storage_has_many, record, column, ui_options: {})
+    )
+    column.name = :paperclip
+    assert_equal(
+      {
+        filename: 'contract.pdf', content_type: 'application/pdf', byte_size: 456,
+        updated_at: '2026-01-02T03:04:05Z'
+      },
+      presenter.send(:mcp_list_paperclip, record, column, ui_options: {})
+    )
+    column.name = :carrierwave
+    assert_equal(
+      {filename: 'photo.jpg', content_type: 'image/jpeg', byte_size: 789},
+      presenter.send(:mcp_list_carrierwave, record, column, ui_options: {})
+    )
+    column.name = :dragonfly
+    assert_equal(
+      {filename: 'scan.tif', content_type: 'image/tiff', byte_size: 321},
+      presenter.send(:mcp_list_dragonfly, record, column, ui_options: {})
+    )
+    column.name = :file_column
+    assert_equal(
+      {filename: 'archive.zip'},
+      presenter.send(:mcp_list_download_link_with_filename, record, column, ui_options: {})
+    )
+  end
+
+  def test_presenter_caches_presentation_method_resolution_for_a_column
+    ui_calls = 0
+    extension = Module.new do
+      def mcp_list_badge(record, column, ui_options:)
+        record.public_send(column.name)
+      end
+    end
+    column_class = presenter_column_class(:name, :association, :list_ui_options, :options)
+    column = column_class.new(:status, nil, nil, {})
+    column.define_singleton_method(:list_ui) do
+      ui_calls += 1
+      :badge
+    end
+    model = Struct.new(:status) do
+      def authorized_for?(_options)
+        true
+      end
+    end
+    model.define_singleton_method(:authorized_for?) { |_options| true }
+    model.define_singleton_method(:primary_key) { nil }
+    config = Struct.new(:model, :columns).new(model, {status: column})
+    tool = build_list_tool_class(presenter_modules: [extension]).new
+    tool.define_singleton_method(:active_scaffold_config) { config }
+    tool.define_singleton_method(:mcp_default_output_columns) { [column] }
+
+    output_columns = tool.send(:mcp_output_columns)
+    assert_equal({status: 'open'}, tool.send(:mcp_record_hash, model.new('open'), output_columns))
+    assert_equal 1, ui_calls
+  end
+
+  def test_column_presenter_method_takes_precedence_over_show_ui
+    extension = Module.new do
+      def status_column(_record, _column)
+        'column override'
+      end
+
+      def mcp_list_badge(_record, _column, ui_options:)
+        "list UI #{ui_options.inspect}"
+      end
+    end
+    column_class = presenter_column_class(:name, :association, :list_ui, :list_ui_options, :options)
+    column = column_class.new(:status, nil, :badge, nil, {})
+    model = Struct.new(:status) do
+      def authorized_for?(_options)
+        true
+      end
+    end
+    model.define_singleton_method(:authorized_for?) { |_options| true }
+    model.define_singleton_method(:primary_key) { nil }
+    config = Struct.new(:model, :columns).new(model, {status: column})
+    tool = build_list_tool_class(presenter_modules: [extension]).new
+    tool.define_singleton_method(:active_scaffold_config) { config }
+    tool.define_singleton_method(:mcp_default_output_columns) { [column] }
+
+    assert_equal({status: 'column override'}, tool.send(:mcp_record_hash, model.new('open'), [column]))
+  end
+
   def test_presenter_does_not_dispatch_column_methods_to_active_scaffold_actions
-    column = Struct.new(:name, :association).new(:parent, nil)
+    column = presenter_column_class(:name, :association).new(:parent, nil)
     model = Struct.new(:parent) do
       def authorized_for?(_options)
         true
@@ -1419,7 +1612,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
       end
     end
     association = Struct.new(:primary_key).new(:account_id)
-    column = Struct.new(:name, :association).new(:tags, association)
+    column = presenter_column_class(:name, :association).new(:tags, association)
     model = Struct.new(:primary_key).new(nil)
     model.define_singleton_method(:authorized_for?) { |_options| true }
     config = Struct.new(:model, :columns).new(model, {tags: column})
@@ -1460,7 +1653,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
   def test_list_tool_serializes_singular_and_collection_associations_as_id_and_label
     association_class = Struct.new(:name, :collection?, :polymorphic?)
-    column_class = Struct.new(:name, :association)
+    column_class = presenter_column_class(:name, :association)
     singular_column = column_class.new(:customer, association_class.new(:customer, false, false))
     collection_column = column_class.new(:tags, association_class.new(:tags, true, false))
     collection_column.define_singleton_method(:associated_limit) { nil }
@@ -1494,7 +1687,9 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
   def test_collection_associations_honor_associated_limit_and_number
     association = Struct.new(:name, :collection?).new(:tags, true)
-    column = Struct.new(:name, :association, :associated_limit, :associated_number?).new(:tags, association, 2, true)
+    column = presenter_column_class(:name, :association, :associated_limit, :associated_number?).new(
+      :tags, association, 2, true
+    )
     associated_record_class = Struct.new(:id, :label) do
       def to_label
         label
@@ -1524,7 +1719,9 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
   def test_collection_associations_can_return_only_the_cached_count
     association = Struct.new(:name, :collection?, :primary_key).new(:tags, true, :account_id)
-    column = Struct.new(:name, :association, :associated_limit, :associated_number?).new(:tags, association, 0, true)
+    column = presenter_column_class(:name, :association, :associated_limit, :associated_number?).new(
+      :tags, association, 0, true
+    )
     record = Struct.new(:id, :account_id, :tags) do
       def authorized_for?(_options)
         true
@@ -1539,7 +1736,9 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
   def test_positive_associated_limit_does_not_load_the_whole_collection
     association = Struct.new(:name, :collection?).new(:tags, true)
-    column = Struct.new(:name, :association, :associated_limit, :associated_number?).new(:tags, association, 2, false)
+    column = presenter_column_class(:name, :association, :associated_limit, :associated_number?).new(
+      :tags, association, 2, false
+    )
     associated_record = Struct.new(:id) do
       def to_label
         "Tag #{id}"
@@ -1576,7 +1775,9 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
   def test_positive_associated_limit_reports_when_all_records_were_loaded_without_counting
     association = Struct.new(:name, :collection?).new(:tags, true)
-    column = Struct.new(:name, :association, :associated_limit, :associated_number?).new(:tags, association, 3, false)
+    column = presenter_column_class(:name, :association, :associated_limit, :associated_number?).new(
+      :tags, association, 3, false
+    )
     associated_record = Struct.new(:id) do
       def to_label
         "Tag #{id}"
@@ -1601,7 +1802,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
   def test_polymorphic_singular_association_includes_its_model
     association = Struct.new(:name, :collection?, :polymorphic?).new(:record, false, true)
-    column = Struct.new(:name, :association).new(:record, association)
+    column = presenter_column_class(:name, :association).new(:record, association)
     associated_record_class = Class.new do
       extend ActiveModel::Naming
 
@@ -2125,7 +2326,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
   def test_presenter_handles_unloaded_counts_loaded_collections_and_zero_limits
     presenter = build_list_tool_class.new.mcp_presenter
     association = Struct.new(:name, :collection?).new(:tags, true)
-    zero_column = Struct.new(:name, :association, :associated_limit, :associated_number?).new(
+    zero_column = presenter_column_class(:name, :association, :associated_limit, :associated_number?).new(
       :tags, association, 0, false
     )
     record = Struct.new(:tags).new([])
@@ -2264,7 +2465,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
 
   def test_association_counts_default_to_the_record_primary_key
     association = Struct.new(:primary_key).new(:account_id)
-    column = Struct.new(:name, :association).new(:tags, association)
+    column = presenter_column_class(:name, :association).new(:tags, association)
     record = Struct.new(:id).new(7)
     tool = Class.new(ActiveScaffold::MCP::Tool).new
     tool.instance_variable_set(:@counts, {tags: {7 => 4}})
@@ -2274,6 +2475,13 @@ class ActiveScaffoldMCPTest < Minitest::Test
   end
 
   private
+
+  def presenter_column_class(*members)
+    Struct.new(*members) do
+      define_method(:list_ui) { nil } unless method_defined?(:list_ui)
+      define_method(:show_ui) { list_ui } unless method_defined?(:show_ui)
+    end
+  end
 
   def build_list_tool_class_with_columns(column_types, settings = {})
     database_column = Struct.new(:name, :type)
