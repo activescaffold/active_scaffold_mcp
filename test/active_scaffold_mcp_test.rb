@@ -1724,7 +1724,590 @@ class ActiveScaffoldMCPTest < Minitest::Test
     ActiveScaffold::Config::MCP.base_tool = previous_base
   end
 
+  def test_base_tool_rejects_an_unauthorized_call_before_perform
+    tool_class = Class.new(ActiveScaffold::MCP::Tool) do
+      self.mcp_action_name = :update
+      tool_name 'unauthorized_active_scaffold_tool'
+
+      def self.active_scaffold_tool_authorized?(**)
+        false
+      end
+
+      def perform
+        raise 'perform must not be called'
+      end
+    end
+
+    response = tool_class.new.call
+
+    assert response.error?
+    assert_includes response.to_h.dig(:content, 0, :text), 'update action is not allowed'
+  end
+
+  def test_base_tool_builds_user_config_with_active_scaffold_params
+    user_config = Object.new
+    calls = []
+    config = Object.new
+    config.define_singleton_method(:new_user_settings) { |session, params| calls << [session, params] }
+    config.define_singleton_method(:user) { user_config }
+    tool_class = Class.new(ActiveScaffold::MCP::Tool)
+    tool_class.active_scaffold_config = config
+    tool = tool_class.new
+
+    assert_same user_config, tool.active_scaffold_config
+    assert_equal 1, calls.length
+    assert_equal({}, calls.first.first)
+    assert_equal 'json', calls.first.last[:format]
+    assert_same user_config, tool.active_scaffold_config
+    assert_equal 1, calls.length
+  end
+
+  def test_base_tool_serializes_associated_records
+    model_name = Struct.new(:human).new('Company')
+    record_class = Class.new do
+      define_singleton_method(:model_name) { model_name }
+    end
+    record = record_class.new
+    record.define_singleton_method(:id) { 12 }
+    record.define_singleton_method(:to_label) { 'Acme' }
+    tool = Class.new(ActiveScaffold::MCP::Tool).new
+
+    assert_equal({id: 12, label: 'Acme'}, tool.send(:mcp_associated_record_hash, record))
+    assert_equal(
+      {id: 12, label: 'Acme', model: 'Company'},
+      tool.send(:mcp_associated_record_hash, record, polymorphic: true)
+    )
+  end
+
+  def test_base_tool_processes_member_and_collection_action_links
+    action_link = Object.new
+    action_links = ActiveSupport::HashWithIndifferentAccess.new(archive: action_link)
+    config = Struct.new(:action_links).new(action_links)
+    tool_class = Class.new(ActiveScaffold::MCP::Tool)
+    tool_class.mcp_action_name = :archive
+
+    member_tool = tool_class.new
+    member_tool.define_singleton_method(:active_scaffold_config) { config }
+    member_tool.instance_variable_set(:@params, ActionController::Parameters.new(id: 7))
+    record = Object.new
+    member_tool.define_singleton_method(:get_row) { |_security_options| @record = record }
+    yielded_record = nil
+    member_tool.send(:process_action_link_action) { |value| yielded_record = value }
+    assert_same record, yielded_record
+
+    missing_tool = tool_class.new
+    missing_tool.define_singleton_method(:active_scaffold_config) { config }
+    missing_tool.instance_variable_set(:@params, ActionController::Parameters.new(id: 8))
+    missing_tool.define_singleton_method(:get_row) { |_security_options| @record = nil }
+    missing_tool.send(:process_action_link_action) { flunk 'an unavailable record must not be yielded' }
+    refute missing_tool.send(:successful?)
+    assert_equal ['Record is not available for archive'], missing_tool.flash.messages
+
+    collection_tool = tool_class.new
+    collection_tool.define_singleton_method(:active_scaffold_config) { config }
+    collection_tool.define_singleton_method(:action_link_authorized?) { |link| link.equal?(action_link) }
+    yielded = false
+    collection_tool.send(:process_action_link_action) { yielded = true }
+    assert yielded
+
+    denied_tool = tool_class.new
+    denied_tool.define_singleton_method(:active_scaffold_config) { config }
+    denied_tool.define_singleton_method(:action_link_authorized?) { |_link| false }
+    assert_raises(ActiveScaffold::ActionNotAllowed) do
+      denied_tool.send(:process_action_link_action) { flunk 'an unauthorized action must not be yielded' }
+    end
+  end
+
+  def test_list_tool_generator_supports_all_filter_operator_params
+    cases = {
+      not_equal: [{id_not: 7}, 'id!', 7],
+      not_in: [{id_not_in: [7, 8]}, 'id!', [7, 8]],
+      not_between: [{id_not_from: 3, id_not_to: 9}, 'id!', '3..9'],
+      null: [{id_null: true}, 'id', ''],
+      not_null: [{id_not_null: true}, 'id!', '']
+    }
+
+    cases.each do |operator, (arguments, param_name, expected)|
+      tool_class = build_list_tool_class(filter_columns: {id: operator})
+
+      assert_equal expected, tool_class.new(arguments).params[param_name], operator.to_s
+    end
+  end
+
+  def test_list_tool_generator_supports_filter_column_shorthand_and_sets
+    tool_class = build_list_tool_class_with_columns(
+      {id: :integer, due_on: :date, created_at: :datetime},
+      filter_columns: [:id],
+      filter_column_sets: {dates: :equal, timestamps: :between}
+    )
+
+    assert_includes tool_class._schema_properties.keys, 'id'
+    assert_includes tool_class._schema_properties.keys, 'due_on'
+    assert_includes tool_class._schema_properties.keys, 'created_at_from'
+    assert_includes tool_class._schema_properties.keys, 'created_at_to'
+    assert_equal '2026-11-16', tool_class.new(due_on: '2026-11-16').params[:due_on]
+  end
+
+  def test_list_tool_generator_rejects_unknown_filter_sets_and_operators
+    error = assert_raises(ArgumentError) do
+      build_list_tool_class(filter_column_sets: {amounts: :equal})
+    end
+    assert_includes error.message, 'unknown MCP filter column set: amounts'
+
+    error = assert_raises(ArgumentError) do
+      build_list_tool_class(filter_columns: {id: :contains})
+    end
+    assert_includes error.message, 'unsupported MCP filter operator for id: contains'
+  end
+
+  def test_mcp_config_normalizes_edge_case_action_declarations
+    assert_equal({}, ActiveScaffold::Config::MCP.normalize_actions(nil))
+    assert_equal(
+      {list: {}, show: {}},
+      ActiveScaffold::Config::MCP.normalize_actions(%w[list show])
+    )
+    assert_equal({}, ActiveScaffold::Config::MCP.normalize_operator_map(nil))
+    assert_equal({}, ActiveScaffold::Config::MCP.normalize_filter_column_sets(nil))
+    assert_equal 1, ActiveScaffold::Config::MCP.send(:duplicate_setting, 1)
+
+    error = assert_raises(ArgumentError) do
+      ActiveScaffold::Config::MCP.normalize_actions(list: :invalid)
+    end
+    assert_includes error.message, 'settings for list must be an array or hash'
+
+    core = Struct.new(:model_id).new(:widgets)
+    config = ActiveScaffold::Config::MCP.new(core)
+    config.actions = {list: {filter_columns: [:id]}}
+    config.expose(:list)
+
+    assert_equal [:id], config.settings_for(:list)[:filter_columns]
+    assert_nil config.settings_for(:show)
+    assert_nil config.mcp_setting_for(:show, :columns)
+    assert_raises(NoMethodError) { config.missing_mcp_action }
+    assert_raises(NoMethodError) { ActiveScaffold::Config::MCP.missing_mcp_action }
+  end
+
+  def test_global_mcp_expose_preserves_existing_settings_without_a_block
+    previous_actions = ActiveScaffold::Config::MCP.actions
+    ActiveScaffold::Config::MCP.actions = {list: {columns: [:id]}}
+
+    action_config = ActiveScaffold::Config::MCP.expose(:list)
+
+    assert_instance_of ActiveScaffold::MCP::ActionConfig, action_config
+    assert_equal [:id], action_config.columns
+  ensure
+    ActiveScaffold::Config::MCP.actions = previous_actions
+  end
+
+  def test_mcp_config_accepts_a_validator_instance
+    previous_validator = ActiveScaffold::Config::MCP.settings_validator
+    validator = Object.new
+    calls = []
+    validator.define_singleton_method(:validate!) do |action_name, settings|
+      calls << [action_name, settings]
+      settings
+    end
+    ActiveScaffold::Config::MCP.settings_validator = validator
+
+    ActiveScaffold::Config::MCP.validate_mcp_setting!(:publish, :description, 'Publish a widget')
+
+    assert_equal [[:publish, {description: 'Publish a widget'}]], calls
+  ensure
+    ActiveScaffold::Config::MCP.settings_validator = previous_validator
+  end
+
+  def test_action_config_delegates_only_attribute_style_calls
+    owner = Object.new
+    owner.define_singleton_method(:mcp_setting_for) { |_action, setting| setting }
+    action_config = ActiveScaffold::MCP::ActionConfig.new(owner, :list)
+
+    assert_equal :columns, action_config.columns
+    assert_raises(NoMethodError) { action_config.columns(:unexpected) }
+  end
+
+  def test_generator_factory_reports_missing_generators_and_exposes_all_actions
+    core = generator_factory_core(
+      list: generator_factory_action_config(:read, []),
+      update: generator_factory_action_config(:update, [])
+    )
+    mcp_config = generator_factory_mcp_config(core, all: {})
+    factory = ActiveScaffold::MCP::GeneratorFactory.new
+    factory.register(generator_returning(:list_tool), actions: :list)
+    factory.register(generator_returning(:update_tool), actions: :update)
+
+    assert_equal %i[list_tool update_tool], factory.generate_tools_for(Class.new, mcp_config)
+
+    missing_factory = ActiveScaffold::MCP::GeneratorFactory.new
+    missing_core = generator_factory_core(publish: generator_factory_action_config(:update, []))
+    missing_config = generator_factory_mcp_config(missing_core, publish: {})
+    error = assert_raises(ActiveScaffold::MCP::GeneratorFactory::GeneratorNotFound) do
+      missing_factory.generate_tools_for(Class.new, missing_config)
+    end
+    assert_includes error.message, '#publish'
+  end
+
+  def test_generator_factory_handles_sparse_and_named_custom_action_configs
+    names_collection = Object.new
+    names_collection.define_singleton_method(:names) { [:publish] }
+    names_collection.define_singleton_method(:[]) { |_name| Object.new }
+    sparse_core = generator_factory_core({}, custom_actions: names_collection)
+    sparse_config = generator_factory_mcp_config(sparse_core, publish: {})
+    factory = ActiveScaffold::MCP::GeneratorFactory.new
+    factory.register_custom(generator_returning(:publish_tool))
+
+    assert_equal [:publish_tool], factory.generate_tools_for(Class.new, sparse_config)
+
+    empty_core = generator_factory_core({}, custom_actions: Object.new)
+    empty_config = generator_factory_mcp_config(empty_core, publish: {})
+
+    assert_empty factory.generate_tools_for(Class.new, empty_config)
+  end
+
+  def test_show_tool_generator_rejects_invalid_identifiers_and_supports_list
+    error = assert_raises(ArgumentError) do
+      build_show_tool_class({}, primary_key: nil)
+    end
+    assert_includes error.message, 'without a primary key'
+
+    error = assert_raises(ArgumentError) do
+      build_show_tool_class({}, primary_key: %w[tenant_id id])
+    end
+    assert_includes error.message, 'composite primary keys'
+
+    error = assert_raises(ArgumentError) do
+      build_show_tool_class(lookup_columns: [:missing])
+    end
+    assert_includes error.message, 'unknown show lookup columns: missing'
+
+    tool_class = build_show_tool_class({}, actions: %i[list show])
+    assert_includes tool_class.ancestors, ActiveScaffold::Actions::List
+  end
+
+  def test_tool_generator_maps_all_json_schema_types_and_formats
+    column = Struct.new(:type)
+    generator = ActiveScaffold::MCP::ToolGenerator
+
+    assert_equal 'number', generator.send(:json_type, column.new(:decimal))
+    assert_equal 'number', generator.send(:json_type, column.new(:float))
+    assert_equal 'string', generator.send(:json_type, nil)
+    assert_equal 'date', generator.send(:json_format, column.new(:date))
+    assert_nil generator.send(:json_format, column.new(:string))
+    assert_nil generator.send(:json_format, nil)
+  end
+
+  def test_false_null_filters_and_unknown_mappings_are_ignored
+    null_tool = build_list_tool_class(filter_columns: {id: :null}).new(id_null: false)
+    not_null_tool = build_list_tool_class(filter_columns: {id: :not_null}).new(id_not_null: false)
+
+    refute null_tool.params.key?(:id)
+    refute not_null_tool.params.key?('id!')
+
+    tool_class = Class.new(ActiveScaffold::MCP::Tool)
+    tool_class.property :unused, type: 'string'
+    tool_class.mcp_param_mappings = {unused: {target: :id, operator: :unsupported}}
+    tool = tool_class.new(unused: 'value')
+
+    assert_equal 'json', tool.params[:format]
+    refute tool.params.key?(:id)
+  end
+
+  def test_profile_user_rejects_a_class_without_find
+    Object.const_set(:MCPUserWithoutFind, Class.new)
+
+    error = assert_raises(ActiveScaffold::MCP::ProfileUser::InvalidReference) do
+      ActiveScaffold::MCP::ProfileUser.resolve('MCPUserWithoutFind#1')
+    end
+    assert_includes error.message, 'class must respond to find'
+  ensure
+    Object.send(:remove_const, :MCPUserWithoutFind) if Object.const_defined?(:MCPUserWithoutFind, false)
+  end
+
+  def test_mcp_returns_no_tools_when_generation_is_disabled
+    previous_generator = ActiveScaffold::Config::MCP.tool_generator
+    ActiveScaffold::Config::MCP.tool_generator = nil
+
+    assert_empty ActiveScaffold::MCP.generate_tools_for(Class.new, Object.new)
+  ensure
+    ActiveScaffold::Config::MCP.tool_generator = previous_generator
+  end
+
+  def test_engine_initializer_and_prepare_callback_handle_both_states
+    previous_defaults = ActiveScaffold.method(:defaults)
+    previous_application = Rails.application
+    previous_reload = ActiveScaffold::MCP.method(:reload_generated_tools!)
+    initializer = ActiveScaffold::MCP::Engine.initializers.find do |candidate|
+      candidate.name == 'active_scaffold_mcp.initialize'
+    end
+
+    [[], [:mcp]].each do |initial_actions|
+      config = Struct.new(:actions).new(initial_actions.dup)
+      ActiveScaffold.define_singleton_method(:defaults) { |&block| block.call(config) }
+      initializer.run(nil)
+      assert_equal [:mcp], config.actions
+    end
+
+    prepare_callback = ActiveScaffold::MCP::Engine.config.to_prepare_blocks.find do |callback|
+      callback.source_location&.first&.end_with?('/active_scaffold/mcp/engine.rb')
+    end
+    reloads = 0
+    [false, true].each do |reloading_enabled|
+      application_config = Object.new
+      application_config.define_singleton_method(:reloading_enabled?) { reloading_enabled }
+      application = Struct.new(:config).new(application_config)
+      Rails.define_singleton_method(:application) { application }
+      ActiveScaffold::MCP.define_singleton_method(:reload_generated_tools!) { reloads += 1 }
+      prepare_callback.call
+    end
+    assert_equal 1, reloads
+  ensure
+    ActiveScaffold.define_singleton_method(:defaults, previous_defaults) if previous_defaults
+    Rails.define_singleton_method(:application) { previous_application }
+    ActiveScaffold::MCP.define_singleton_method(:reload_generated_tools!, previous_reload) if previous_reload
+  end
+
+  def test_list_generator_edge_case_descriptions_and_defaults
+    created_config_list = !ActiveScaffold::Actions.const_defined?(:ConfigList, false)
+    ActiveScaffold::Actions.const_set(:ConfigList, Module.new) if created_config_list
+
+    missing_column_tool = build_list_tool_class(filter_columns: {missing: :equal})
+    refute_includes missing_column_tool._schema_properties.keys, 'missing'
+
+    empty_search_tool = build_list_tool_class(search_action: true, configured_search_columns: [])
+    assert_equal(
+      'Search text across the configured ActiveScaffold search columns',
+      empty_search_tool._schema_properties.dig('search', :description)
+    )
+
+    many_search_columns = Array.new(13) { |index| [:"field_#{index}", nil] }
+    many_search_tool = build_list_tool_class(
+      search_action: true,
+      configured_search_columns: many_search_columns
+    )
+    assert_includes many_search_tool._schema_properties.dig('search', :description), 'and 1 more'
+
+    no_views_tool = build_list_tool_class(config_list_action: true, named_views: [])
+    refute_includes no_views_tool._schema_properties.keys, 'list_view'
+
+    saved_view_tools = build_list_tool_class(config_list_action: true, named_views: [], saved_list_views: true)
+    assert_equal 2, saved_view_tools.length
+    assert_includes saved_view_tools.first._schema_properties.keys, 'list_view'
+    refute_includes saved_view_tools.first.description, 'Configured views:'
+
+    default_limit_tool = build_list_tool_class(
+      per_page: 0,
+      action_config_without_sorting: true,
+      sortable_columns: [:id]
+    )
+    assert_equal 25, default_limit_tool.new.limit
+    assert_includes default_limit_tool.description, 'configured ActiveScaffold default sorting is used'
+  ensure
+    ActiveScaffold::Actions.send(:remove_const, :ConfigList) if created_config_list
+  end
+
+  def test_list_views_omit_denied_views_and_blank_tooltips
+    view = Struct.new(:name, :security_method, :tooltip)
+    views = [
+      view.new('Denied', :denied_view?, 'Hidden'),
+      view.new('Visible', nil, nil)
+    ]
+    active_config = Struct.new(:config_list).new(Struct.new(:named_views).new(views))
+    tool = Class.new(ActiveScaffold::MCP::ListViewsTool).new
+    tool.define_singleton_method(:active_scaffold_config) { active_config }
+    tool.define_singleton_method(:denied_view?) { false }
+    tool.define_singleton_method(:config_list_named_views) { [] }
+
+    assert_equal(
+      [{label: 'Visible', value: 'Visible', source: 'configured'}],
+      tool.send(:mcp_available_list_views)
+    )
+  end
+
+  def test_presenter_handles_unloaded_counts_loaded_collections_and_zero_limits
+    presenter = build_list_tool_class.new.mcp_presenter
+    association = Struct.new(:name, :collection?).new(:tags, true)
+    zero_column = Struct.new(:name, :association, :associated_limit, :associated_number?).new(
+      :tags, association, 0, false
+    )
+    record = Struct.new(:tags).new([])
+
+    assert_nil presenter.send(:collection_association_value, record, [], zero_column, nil)
+
+    loaded_collection = Object.new
+    loaded_collection.define_singleton_method(:loaded?) { true }
+    loaded_collection.define_singleton_method(:first) { |limit| %i[first second third].first(limit) }
+    assert_equal %i[first second], presenter.send(:limited_associated_records, loaded_collection, 2)
+
+    numbered_column = Struct.new(:name).new(:tags)
+    assert_equal 3, presenter.send(:association_size, record, %i[a b c], numbered_column, nil)
+  end
+
+  def test_list_tool_reports_a_disallowed_raw_filter_and_uses_default_action_error
+    tool_class = build_list_tool_class
+    tool_class.mcp_action_name = :list
+    tool = tool_class.new
+    tool.instance_variable_set(:@params, ActionController::Parameters.new(status: 'closed'))
+    tool.instance_variable_set(
+      :@filter_states,
+      {status: {option: nil, status: :disallowed, requested: true}}
+    )
+    reported_error = nil
+    tool.define_singleton_method(:report_error) { |message| reported_error = message }
+
+    assert tool.send(:report_disallowed_filters)
+    assert_includes reported_error, '`status="closed"`'
+    assert_includes tool.send(:action_not_allowed_message), 'list action is not allowed'
+  end
+
+  def test_tool_fallback_paths_handle_nil_attributes_and_missing_application
+    previous_application = Rails.application
+    previous_filters = ActiveScaffold::MCP::Tool.instance_variable_get(:@parameter_filter_filters)
+    previous_filter = ActiveScaffold::MCP::Tool.instance_variable_get(:@parameter_filter)
+    ActiveScaffold::MCP::Tool.instance_variable_set(:@parameter_filter_filters, [:force_refresh])
+
+    Rails.define_singleton_method(:application) { nil }
+    assert_instance_of ActiveSupport::ParameterFilter, ActiveScaffold::MCP::Tool.parameter_filter
+
+    tool = Class.new(ActiveScaffold::MCP::Tool).new(nil)
+    assert_equal [], tool.instance_variable_get(:@provided_mcp_arguments)
+  ensure
+    Rails.define_singleton_method(:application) { previous_application }
+    ActiveScaffold::MCP::Tool.instance_variable_set(:@parameter_filter_filters, previous_filters)
+    ActiveScaffold::MCP::Tool.instance_variable_set(:@parameter_filter, previous_filter)
+  end
+
+  def test_tool_logs_without_a_notifier_or_wire_arguments
+    previous_logger = Rails.logger
+    logged = []
+    logger = Object.new
+    logger.define_singleton_method(:error) { |message| logged << message }
+    tool_class = Class.new(ActiveScaffold::MCP::Tool) do
+      tool_name 'fallback_exception_arguments'
+    end
+    tool = tool_class.new(case_number: 'S0000008')
+    exception = RuntimeError.new('fallback failure')
+    exception.set_backtrace(["tool.rb:1:in 'perform'"])
+    Rails.logger = logger
+
+    tool.send(:report_active_scaffold_exception, exception)
+
+    assert_includes logged.join, 'fallback_exception_arguments failed'
+    assert_includes logged.join, 'S0000008'
+  ensure
+    Rails.logger = previous_logger
+  end
+
+  def test_primary_key_columns_honor_model_authorization
+    model = Struct.new(:primary_key).new('id')
+    model.define_singleton_method(:authorized_for?) { |**| false }
+    config = Struct.new(:model, :columns).new(model, {'id' => Object.new})
+    tool = Class.new(ActiveScaffold::MCP::Tool).new
+    tool.define_singleton_method(:active_scaffold_config) { config }
+
+    assert_empty tool.send(:mcp_primary_key_columns)
+  end
+
+  def test_generator_factory_applies_a_default_rule_without_crud_type
+    action_config = Struct.new(:columns).new([])
+    core = generator_factory_core(details: action_config)
+    mcp_config = generator_factory_mcp_config(core, details: {})
+    factory = ActiveScaffold::MCP::GeneratorFactory.new
+    factory.register_default(generator_returning(:details_tool))
+
+    assert_equal [:details_tool], factory.generate_tools_for(Class.new, mcp_config)
+  end
+
+  def test_list_filter_generation_handles_partial_polymorphic_columns_and_filter_subsets
+    reflection = Struct.new(:foreign_key, :foreign_type) do
+      def polymorphic?
+        true
+      end
+    end.new('record_id', 'record_type')
+    model = Object.new
+    model.define_singleton_method(:reflect_on_all_associations) { |_macro| [reflection] }
+    column = Struct.new(:name, :type)
+
+    core_without_key_filter = Struct.new(:model, :_columns_hash).new(
+      model,
+      {'record_id' => column.new('record_id', :integer), 'record_type' => column.new('record_type', :string)}
+    )
+    assert_equal(
+      {id: :equal},
+      ActiveScaffold::MCP::ListToolGenerator.send(
+        :configured_filter_columns,
+        core_without_key_filter,
+        {filter_columns: {id: :equal}}
+      )
+    )
+
+    core_without_type_column = Struct.new(:model, :_columns_hash).new(
+      model,
+      {'record_id' => column.new('record_id', :integer)}
+    )
+    assert_equal(
+      {record_id: :equal},
+      ActiveScaffold::MCP::ListToolGenerator.send(
+        :configured_filter_columns,
+        core_without_type_column,
+        {filter_columns: {record_id: :equal}}
+      )
+    )
+
+    filter = ActiveScaffold::DataStructures::Filter.new(:status, :select)
+    filters = Object.new
+    filters.define_singleton_method(:[]) { |name| name.to_sym == :status ? filter : nil }
+    filters.define_singleton_method(:to_a) { [filter] }
+    tool_class = build_list_tool_class(filters: [:status], action_filters: filters)
+
+    assert_includes tool_class._schema_properties.keys, 'status'
+    assert_equal [], tool_class._schema_properties.dig('status', :enum)
+  end
+
+  def test_association_counts_default_to_the_record_primary_key
+    association = Struct.new(:primary_key).new(:account_id)
+    column = Struct.new(:name, :association).new(:tags, association)
+    record = Struct.new(:id).new(7)
+    tool = Class.new(ActiveScaffold::MCP::Tool).new
+    tool.instance_variable_set(:@counts, {tags: {7 => 4}})
+    tool.define_singleton_method(:count_on_association_class?) { |_column| false }
+
+    assert_equal({tags: 4}, tool.send(:association_counts_for, record, [column]))
+  end
+
   private
+
+  def build_list_tool_class_with_columns(column_types, settings = {})
+    database_column = Struct.new(:name, :type)
+    columns = column_types.to_h do |name, type|
+      [name.to_s, database_column.new(name.to_s, type)]
+    end
+    model_name = Struct.new(:route_key) do
+      def human(count:)
+        count == 2 ? 'Widgets' : 'Widget'
+      end
+    end.new('widgets')
+    model = Struct.new(:model_name, :primary_key).new(model_name, 'id')
+    active_scaffold_column = Struct.new(:name) do
+      def sortable?
+        false
+      end
+    end
+    core = Struct.new(:model, :_columns_hash, :columns, :actions).new(
+      model,
+      columns,
+      columns.keys.map { |name| active_scaffold_column.new(name) },
+      [:list]
+    )
+    configure_active_record_core(core)
+    action_config = Struct.new(:per_page, :filters, :sorting).new(20, [], nil)
+
+    ActiveScaffold::MCP::ListToolGenerator.generate_tool_for(
+      controller_class: Class.new,
+      action_name: :list,
+      action_config: action_config,
+      mcp_config: list_mcp_config(core),
+      settings: settings
+    )
+  end
 
   def build_list_tool_class(settings = {})
     settings = settings.dup
@@ -1736,6 +2319,9 @@ class ActiveScaffoldMCPTest < Minitest::Test
     named_views = Array(settings.delete(:named_views))
     named_view_security_methods = settings.delete(:named_view_security_methods) || {}
     saved_list_views = settings.delete(:saved_list_views)
+    per_page = settings.delete(:per_page)
+    action_config_without_sorting = settings.delete(:action_config_without_sorting)
+    configured_search_column_data = settings.delete(:configured_search_columns)
     controller_class = settings.delete(:controller_class) || Class.new
     unless controller_class.respond_to?(:controller_name)
       controller_class.define_singleton_method(:controller_name) { 'widgets' }
@@ -1761,10 +2347,12 @@ class ActiveScaffoldMCPTest < Minitest::Test
     end.new('widgets')
     model = Struct.new(:model_name, :primary_key).new(model_name, 'id')
     search_column = Struct.new(:name, :label)
-    configured_search_columns = [
-      search_column.new(:case_number, 'Case number'),
-      search_column.new(:summary, nil)
-    ]
+    configured_search_columns =
+      if configured_search_column_data
+        configured_search_column_data.map { |name, label| search_column.new(name, label) }
+      else
+        [search_column.new(:case_number, 'Case number'), search_column.new(:summary, nil)]
+      end
     search_columns = Struct.new(:columns) do
       delegate :any?, to: :columns
 
@@ -1803,7 +2391,12 @@ class ActiveScaffoldMCPTest < Minitest::Test
       column = active_scaffold_columns.find { |candidate| candidate.name == name.to_s }
       [column, direction]
     end
-    action_config = Struct.new(:per_page, :filters, :sorting).new(20, action_filters, sorting)
+    action_config =
+      if action_config_without_sorting
+        Struct.new(:per_page, :filters).new(per_page || 20, action_filters)
+      else
+        Struct.new(:per_page, :filters, :sorting).new(per_page || 20, action_filters, sorting)
+      end
 
     ActiveScaffold::MCP::ListToolGenerator.generate_tool_for(
       controller_class: controller_class,
@@ -1814,8 +2407,8 @@ class ActiveScaffoldMCPTest < Minitest::Test
     )
   end
 
-  def build_show_tool_class(settings = {})
-    settings = settings.dup
+  def build_show_tool_class(settings = nil, primary_key: 'id', actions: [:show], **keyword_settings)
+    settings = (settings || {}).merge(keyword_settings)
     id_column = Struct.new(:name, :type).new('id', :integer)
     case_number_column = Struct.new(:name, :type).new('case_number', :string)
     name_column = Struct.new(:name, :type).new('name', :string)
@@ -1826,7 +2419,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
         count == 2 ? 'Widgets' : 'Widget'
       end
     end.new('widgets')
-    model = Struct.new(:model_name, :primary_key).new(model_name, 'id')
+    model = Struct.new(:model_name, :primary_key).new(model_name, primary_key)
     model.define_singleton_method(:authorized_for?) { |_options| true }
     core = Struct.new(:model, :_columns_hash, :actions).new(
       model,
@@ -1837,7 +2430,7 @@ class ActiveScaffoldMCPTest < Minitest::Test
         'active' => active_column,
         'reported_at' => reported_at_column
       },
-      [:show]
+      actions
     )
     configure_active_record_core(core)
     mcp_config = list_mcp_config(core)
