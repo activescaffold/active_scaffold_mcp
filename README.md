@@ -21,7 +21,7 @@ The gem is under initial development. The first implementation will provide a co
 Add the gem to your application:
 
 ```ruby
-gem "active_scaffold_mcp", "~> 0.1.1"
+gem "active_scaffold_mcp", "~> 0.1.3"
 ```
 
 Association columns use ActiveScaffold's list settings in MCP results. An
