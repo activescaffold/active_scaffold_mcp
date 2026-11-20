@@ -1474,13 +1474,12 @@ class ActiveScaffoldMCPTest < Minitest::Test
     carrierwave_file = Data.define(:filename, :content_type, :size).new('photo.jpg', 'image/jpeg', 789)
     carrierwave = Struct.new(:identifier, :file).new('photo.jpg', carrierwave_file)
     dragonfly = Data.define(:name, :mime_type, :size).new('scan.tif', 'image/tiff', 321)
-    record = Struct.new(:one, :many, :paperclip, :carrierwave, :dragonfly, :file_column).new(
+    record = Struct.new(:one, :many, :paperclip, :carrierwave, :dragonfly).new(
       active_storage_one,
       active_storage_many,
       paperclip,
       carrierwave,
-      dragonfly,
-      '/uploads/archive.zip'
+      dragonfly
     )
     presenter = build_list_tool_class.new.mcp_presenter
     column = Struct.new(:name).new
@@ -1512,11 +1511,6 @@ class ActiveScaffoldMCPTest < Minitest::Test
     assert_equal(
       {filename: 'scan.tif', content_type: 'image/tiff', byte_size: 321},
       presenter.send(:mcp_list_dragonfly, record, column, ui_options: {})
-    )
-    column.name = :file_column
-    assert_equal(
-      {filename: 'archive.zip'},
-      presenter.send(:mcp_list_download_link_with_filename, record, column, ui_options: {})
     )
   end
 

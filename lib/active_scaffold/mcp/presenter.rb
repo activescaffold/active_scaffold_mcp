@@ -130,13 +130,6 @@ module ActiveScaffold
         )
       end
 
-      def mcp_list_download_link(record, column, ui_options:)
-        file_column_attachment_metadata(record, column)
-      end
-
-      alias mcp_list_download_link_with_filename mcp_list_download_link
-      alias mcp_list_thumbnail mcp_list_download_link
-
       def association_value(record, value, column, counts)
         if column.association.collection?
           collection_association_value(record, value, column, counts)
